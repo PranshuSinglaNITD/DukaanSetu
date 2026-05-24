@@ -1,0 +1,144 @@
+//this is basically SQL
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  phone        String   @unique
+  password     String
+  role         String   @default("RETAILER")
+  
+  profilePic   String?  
+  businessName String?  
+  businessType String?  
+  address      String?  
+  
+  properties   Property[] @relation("UserProperties") // Properties the user OWNS
+  
+  //for user favourites
+  favoriteProperties Property[] @relation("UserFavorites") 
+  products Product[] @relation("UserProducts")
+  buyerNegotiations Negotiation[] @relation("BuyerNegotiations")
+  sellerNegotiations Negotiation[] @relation("SellerNegotiations")
+  offersSent         Offer[]       @relation("UserOffers")
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+
+model Property {
+  id           String   @id @default(uuid())
+  ownerId      String
+  owner        User     @relation("UserProperties", fields: [ownerId], references: [id])
+  
+  title        String
+  description  String?
+  propertyType String   
+  listingType  String   
+  
+  price        Float    
+  deposit      Float?   
+  areaSqFt     Float
+  
+  address      String
+  city         String
+  state        String
+  
+  images       String[] 
+  status       String   @default("AVAILABLE")
+  
+  // ADD THIS LINE: Users who have favorited this property
+  favoritedBy  User[]   @relation("UserFavorites")
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  sellerId    String
+  seller      User     @relation("UserProducts", fields: [sellerId], references: [id])
+  
+  name        String
+  description String?
+  category    String   // e.g., "GRAINS", "VEGETABLES", "FMCG"
+  mandiName   String?  // Optional: Specific Mandi if applicable (e.g., "Azadpur Mandi")
+  
+  price       Float    // Current price
+  unit        String   @default("KG") // e.g., "KG", "QUINTAL", "BOX"
+  stock       Float    // Available quantity
+  
+  images      String[] 
+  isAvailable Boolean  @default(true)
+  negotiations Negotiation[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Negotiation {
+  id        String   @id @default(uuid())
+  buyerId   String
+  sellerId  String
+  productId String?  // Optional: Links the negotiation to a specific product
+  
+  status    String   @default("ACTIVE") // "ACTIVE", "ACCEPTED", "REJECTED"
+  
+  buyer     User     @relation("BuyerNegotiations", fields: [buyerId], references: [id])
+  seller    User     @relation("SellerNegotiations", fields: [sellerId], references: [id])
+  product   Product? @relation(fields: [productId], references: [id])
+  
+  offers    Offer[]  // The back-and-forth messages/prices
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Offer {
+  id            String   @id @default(uuid())
+  negotiationId String
+  senderId      String
+  
+  price         Float
+  message       String?
+  status        String   @default("PENDING") // "PENDING", "ACCEPTED", "REJECTED"
+  
+  negotiation   Negotiation @relation(fields: [negotiationId], references: [id])
+  sender        User        @relation("UserOffers", fields: [senderId], references: [id])
+  
+  createdAt     DateTime @default(now())
+}
+
+model Inventory {
+  id          String   @id @default(uuid())
+  userId      String   // The shopkeeper who bought the item
+  name        String   // Name of the product
+  category    String
+  buyPrice    Float    // The price they bought it for from the Mandi
+  quantity    Int      // Current stock they have available to sell
+  unit        String   // KG, Liters, etc.
+  
+  sales       Sale[]   // Relation to keep track of every time they sell a portion of this stock
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Sale {
+  id          String   @id @default(uuid())
+  inventoryId String
+  inventory   Inventory @relation(fields: [inventoryId], references: [id])
+  
+  sellPrice   Float    // The price they sold it to the customer for
+  quantity    Int      // How much they sold
+  profit      Float    // Auto-calculated: (sellPrice - buyPrice) * quantity
+  
+  soldAt      DateTime @default(now())
+}

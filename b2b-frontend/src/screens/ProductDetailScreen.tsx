@@ -6,7 +6,8 @@ import { AuthContext } from '../context/AuthContext';
 import apiClient from '../api/client';
 
 export default function ProductDetailScreen({ route, navigation }: any) {
-  const { product } = route.params;
+  const { product,negotiatedPrice,negotiationId } = route.params;
+  const displayPrice = negotiatedPrice ? negotiatedPrice : product.price;
   
   // @ts-ignore
   const { user } = useContext(AuthContext);
@@ -31,7 +32,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
 
     Alert.alert(
       "Confirm Purchase",
-      `Buy ${qty} ${product.unit} of ${product.name} for ₹${product.price * qty}?`,
+      `Buy ${qty} ${product.unit} of ${product.name} for ₹${displayPrice * qty}?`, // Uses displayPrice!
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -39,8 +40,13 @@ export default function ProductDetailScreen({ route, navigation }: any) {
           onPress: async () => {
             setLoading(true);
             try {
-              await apiClient.post('/products/buy', { productId: product.id, quantity: qty });
-              Alert.alert("Deal Settled!", "Transaction completed. This crop batch has been routed to your Inventory.");
+              //Pass the negotiationId to the backend so you get the discount!
+              await apiClient.post('/products/buy', { 
+                productId: product.id, 
+                quantity: qty,
+                negotiationId: negotiationId 
+              });
+              Alert.alert("Deal Settled!", "Transaction completed.");
               navigation.navigate('Landing');
             } catch (error: any) {
               Alert.alert("Transaction Failed", error.response?.data?.error || "Error executing checkout.");
@@ -61,7 +67,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
 
     setLoading(true);
     try {
-      await apiClient.post('/negotiations/start', {
+      await apiClient.post('/negotiation/start', {
         sellerId: product.sellerId,
         productId: product.id,
         offerPrice: offerPrice,
@@ -116,11 +122,14 @@ export default function ProductDetailScreen({ route, navigation }: any) {
           {/* Pricing & Stock */}
           <View style={styles.metricsBox}>
             <View>
-              <Text style={styles.metricLabel}>Current Price</Text>
-              <Text style={styles.metricPrice}>₹{product.price}<Text style={styles.unitLabel}> / {product.unit}</Text></Text>
+              {/* Highlight if it is a negotiated price */}
+              <Text style={[styles.metricLabel, negotiatedPrice && { color: '#27ae60' }]}>
+                {negotiatedPrice ? "Your Negotiated Price" : "Mandi Base Price"}
+              </Text>
+              <Text style={styles.metricPrice}>₹{displayPrice}<Text style={styles.unitLabel}> / {product.unit}</Text></Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.metricLabel}>Total Stock</Text>
+              <Text style={styles.metricLabel}>Total Batch Stock</Text>
               <Text style={styles.metricStock}>{product.stock} {product.unit}</Text>
             </View>
           </View>
@@ -156,10 +165,13 @@ export default function ProductDetailScreen({ route, navigation }: any) {
             </View>
           ) : (
             <View style={styles.ctaGrid}>
-              <TouchableOpacity style={styles.negotiateButton} onPress={() => setModalVisible(true)}>
-                <Ionicons name="chatbubbles" size={20} color="#e67e22" style={{ marginRight: 8 }} />
-                <Text style={styles.negotiateButtonText}>Negotiate Rate</Text>
-              </TouchableOpacity>
+              {/* 🚨 Only show the negotiate button if they haven't negotiated yet! */}
+              {!negotiationId && (
+                <TouchableOpacity style={styles.negotiateButton} onPress={() => setModalVisible(true)}>
+                  <Ionicons name="chatbubbles" size={20} color="#e67e22" style={{ marginRight: 8 }} />
+                  <Text style={styles.negotiateButtonText}>Negotiate Rate</Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity style={styles.buyButton} onPress={handleDirectBuy} disabled={loading}>
                 {loading ? <ActivityIndicator color="#fff" /> : (

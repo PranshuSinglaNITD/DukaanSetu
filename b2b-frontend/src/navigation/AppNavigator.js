@@ -13,6 +13,8 @@ import LandingScreen from '@/screens/LandingScreen';
 import InventoryDetailScreen from '@/screens/InventoryDetailScreen';
 import InventoryScreen from '@/screens/InventoryScreen';
 import ProductDetailScreen from '@/screens/ProductDetailScreen';
+import NegotiationDetailScreen from '@/screens/NegotiationDetailScreen';
+import NegotiationsScreen from '@/screens/NegotiationsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -44,6 +46,8 @@ const AppNavigator = () => {
               options={{ presentation: 'modal', headerShown: false }}
             />
             <Stack.Screen name="ProductDetail" component={ProductDetailScreen}></Stack.Screen>
+            <Stack.Screen name="Negotiations" component={NegotiationsScreen} />
+            <Stack.Screen name="NegotiationDetail" component={NegotiationDetailScreen} />
           </>
         ) : (
           <>

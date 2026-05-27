@@ -13,9 +13,9 @@ export const getSmartPrice = async (req, res) => {
 
     const user=await prisma.user.findUnique({
         where:{id:userId},
-        select:{city:true,state:true}
+        select:{address:true}
     })
-    const exactLocation=(user?.city&&user?.state)?`${user.city}, ${user.state}`:"Local indian market";
+    const exactLocation=(user?.address)?user?.address:"local indian market";
     // Initialize the specific model
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 

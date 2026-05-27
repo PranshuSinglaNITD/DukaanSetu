@@ -44,6 +44,7 @@ export const AuthProvider = ({ children }) => {
       setUser(loggedInUser);
       return { success: true };
     } catch (error) {
+      console.log("FULL LOGIN ERROR:", error.response?.data || error.message);
       return { success: false, message: error.response?.data?.error || "Login failed" };
     }
   };

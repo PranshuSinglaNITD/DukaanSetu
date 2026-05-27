@@ -115,31 +115,82 @@ export const getMyNegotiations = async (req, res) => {
 
 export const resolveNegotiation = async (req, res) => {
   try {
-    const { negotiationId, action } = req.body; // action should be 'ACCEPTED' or 'REJECTED'
+    const { negotiationId, action } = req.body; // 'ACCEPTED' or 'REJECTED'
     const userId = req.user.userId;
 
-    const negotiation = await prisma.negotiation.findUnique({ where: { id: negotiationId } });
-    
+    // 1. Fetch the negotiation and the LATEST offer
+    const negotiation = await prisma.negotiation.findUnique({
+      where: { id: negotiationId },
+      include: {
+        offers: { orderBy: { createdAt: 'desc' }, take: 1 } 
+      }
+    });
+
+    if (!negotiation) return res.status(404).json({ error: "Negotiation not found" });
+    if (negotiation.buyerId !== userId && negotiation.sellerId !== userId) return res.status(403).json({ error: "Unauthorized" });
+    if (negotiation.status !== 'ACTIVE') return res.status(400).json({ error: `Negotiation is already ${negotiation.status}` });
+
+    // 2. IF REJECTED
+    if (action === 'REJECTED') {
+      const updated = await prisma.negotiation.update({ 
+        where: { id: negotiationId }, 
+        data: { status: 'REJECTED' } 
+      });
+      return res.status(200).json({ status: 'success', data: updated });
+    }
+
+    // 3. 🚀 IF ACCEPTED: Update the Negotiation AND the winning Offer
+    if (action === 'ACCEPTED') {
+      const winningOfferId = negotiation.offers[0].id;
+
+      // Atomic Transaction to lock in both records simultaneously
+      await prisma.$transaction([
+        prisma.negotiation.update({
+          where: { id: negotiationId },
+          data: { status: 'ACCEPTED' }
+        }),
+        prisma.offer.update({
+          where: { id: winningOfferId },
+          data: { status: 'ACCEPTED' } // Marks this specific offer as the final agreed deal
+        })
+      ]);
+
+      return res.status(200).json({ 
+        status: 'success', 
+        message: 'Deal locked in! Awaiting buyer payment.' 
+      });
+    }
+
+  } catch (error) {
+    console.error("Resolve Negotiation Error:", error);
+    res.status(500).json({ error: 'Failed to resolve negotiation' });
+  }
+};
+
+export const getNegotiationById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+
+    const negotiation = await prisma.negotiation.findUnique({
+      where: { id },
+      include: {
+        buyer: { select: { name: true, businessName: true } },
+        seller: { select: { name: true, businessName: true } },
+        product: { include: { seller: true } }, 
+        offers: { orderBy: { createdAt: 'asc' } } 
+      }
+    });
+
     if (!negotiation) return res.status(404).json({ error: "Negotiation not found" });
     if (negotiation.buyerId !== userId && negotiation.sellerId !== userId) {
       return res.status(403).json({ error: "Unauthorized" });
     }
-    if (negotiation.status !== 'ACTIVE') {
-      return res.status(400).json({ error: `Negotiation is already ${negotiation.status}` });
-    }
 
-    // Update the status
-    const updatedNegotiation = await prisma.negotiation.update({
-      where: { id: negotiationId },
-      data: { status: action.toUpperCase() } // 'ACCEPTED' or 'REJECTED'
-    });
-
-    // If accepted, you could trigger an Order creation here in the future!
-
-    res.status(200).json({ status: 'success', data: updatedNegotiation });
+    res.status(200).json({ status: 'success', data: negotiation });
   } catch (error) {
-    console.error("Resolve Negotiation Error:", error);
-    res.status(500).json({ error: 'Failed to resolve negotiation' });
+    console.error("Get Negotiation By ID Error:", error);
+    res.status(500).json({ error: 'Failed to fetch thread' });
   }
 };
 

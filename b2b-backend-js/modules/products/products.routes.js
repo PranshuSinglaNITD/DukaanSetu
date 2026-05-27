@@ -10,6 +10,7 @@ import {
   comparePrices,
   purchaseProduct
 } from './products.controller.js';
+import { payForOrder } from './trade.controller.js';
 
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
 
@@ -25,15 +26,13 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 const router = express.Router();
 
-// 🚨 Bouncer at the top! Every route below is protected.
 router.use(protect);
-
-// 🚨 FIXED: Swapped all 'Property' functions for the correct 'Product' functions
 router.get('/', getAllProducts);
 router.get('/compare', comparePrices); // Must go before /:id
 router.post('/create', upload.array('images', 5), createProduct);
 router.put('/:id', updateProduct);
 router.delete('/:id', deleteProduct);
 router.post('/buy',purchaseProduct);
+router.post('/pay-order',payForOrder);
 
 export default router;

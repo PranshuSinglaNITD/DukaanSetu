@@ -186,28 +186,58 @@ export const comparePrices = async (req, res) => {
   }
 };
 
-//for buying
 export const purchaseProduct = async (req, res) => {
   try {
-    const { productId, quantity } = req.body;
+    const { productId, quantity, negotiationId } = req.body;
     const buyerId = req.user.userId; 
-    const buyQty = parseInt(quantity);
+    
+    // 1. Ensure buyQty is a valid number
+    const buyQty = parseInt(quantity, 10);
+    if (isNaN(buyQty) || buyQty <= 0) {
+      return res.status(400).json({ error: "Invalid purchase quantity provided." });
+    }
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
 
     if (!product) return res.status(404).json({ error: "Product not found" });
     if (product.sellerId === buyerId) return res.status(400).json({ error: "You cannot buy your own product" });
+    
+    // Ensure stock exists
+    if (product.stock === undefined || product.stock === null) {
+        return res.status(500).json({ error: "Product database record is missing stock data." });
+    }
+
     if (product.stock < buyQty) return res.status(400).json({ error: "Insufficient stock available" });
 
-    const totalPrice = product.price * buyQty;
+    let finalUnitPrice = product.price;
 
-    // Execute atomic transaction: Deduct stock, log the formal order, and add to buyer's warehouse inventory
+    // 2. Handle Negotiated Discount
+    if (negotiationId) {
+      const negotiation = await prisma.negotiation.findUnique({
+        where: { id: negotiationId },
+        include: { offers: { orderBy: { createdAt: 'desc' }, take: 1 } }
+      });
+
+      if (!negotiation) return res.status(404).json({ error: "Negotiation not found" });
+      if (negotiation.status !== 'ACCEPTED') return res.status(400).json({ error: "This deal has not been accepted yet." });
+      
+      finalUnitPrice = negotiation.offers[0].price;
+      
+      await prisma.negotiation.update({
+        where: { id: negotiationId },
+        data: { status: 'COMPLETED' }
+      });
+    }
+
+    const newStockLevel = product.stock - buyQty;
+
+    // 3. 🚨 THE FIX: Removed 'quantity' from the product.update block!
     const result = await prisma.$transaction([
       prisma.product.update({
         where: { id: productId },
         data: { 
-          stock: product.stock - buyQty,
-          isAvailable: product.stock - buyQty > 0
+          stock: newStockLevel, // <-- Only update stock
+          isAvailable: newStockLevel > 0
         }
       }),
       prisma.inventory.create({
@@ -215,14 +245,14 @@ export const purchaseProduct = async (req, res) => {
           userId: buyerId,
           name: product.name,
           category: product.category,
-          buyPrice: product.price,
-          quantity: buyQty,
+          buyPrice: finalUnitPrice, 
+          quantity: buyQty,       // <-- Inventory STILL needs quantity (which is correct)
           unit: product.unit || 'KG'
         }
       })
     ]);
 
-    res.status(201).json({ status: 'success', message: 'Purchase finalized and stock added to inventory', data: result[1] });
+    res.status(201).json({ status: 'success', message: 'Purchase finalized', data: result[1] });
   } catch (error) {
     console.error("Purchase Error:", error);
     res.status(500).json({ error: 'Failed to process purchase transaction' });

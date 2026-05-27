@@ -112,7 +112,7 @@ export default function MarketplaceScreen({navigation}:any) {
                   </TouchableOpacity>
                 ))
               )}
-            </ScrollView>
+            </ScrollView> 
 
             {/* PRODUCTS SECTION */}
             <View style={[styles.sectionHeader, { marginTop: 15 }]}>

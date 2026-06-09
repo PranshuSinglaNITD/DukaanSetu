@@ -1,9 +1,7 @@
-import express from 'express';
+import { Router } from 'express';
+import { getBusinessAnalytics } from './analytics.controller.js';
+import { protect } from '../../middlewares/auth.middleware.js';
 
-const router = express.Router();
-
-router.get('/test', (req, res) => {
-  res.json({ message: 'analytics route works!' });
-});
-
+const router = Router();
+router.get('/', protect, getBusinessAnalytics);
 export default router;

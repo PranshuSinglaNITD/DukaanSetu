@@ -15,6 +15,12 @@ import InventoryScreen from '@/screens/InventoryScreen';
 import ProductDetailScreen from '@/screens/ProductDetailScreen';
 import NegotiationDetailScreen from '@/screens/NegotiationDetailScreen';
 import NegotiationsScreen from '@/screens/NegotiationsScreen';
+import DispatchSetupScreen from '@/screens/DispatchSetupScreen';
+import LiveTrackingScreen from '@/screens/LiveTrackingScreen';
+import SellerSalesScreen from '@/screens/SellerSalesScreen';
+import BuyerOrdersScreen from '@/screens/BuyerOrdersScreen';
+import ChatScreen from '@/screens/AIChatScreen';
+import AnalyticsScreen from '@/screens/AnalyticsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -48,6 +54,12 @@ const AppNavigator = () => {
             <Stack.Screen name="ProductDetail" component={ProductDetailScreen}></Stack.Screen>
             <Stack.Screen name="Negotiations" component={NegotiationsScreen} />
             <Stack.Screen name="NegotiationDetail" component={NegotiationDetailScreen} />
+            <Stack.Screen name="DispatchSetup" component={DispatchSetupScreen} />
+            <Stack.Screen name="LiveTracking" component={LiveTrackingScreen} />
+            <Stack.Screen name="SellerSales" component={SellerSalesScreen} />
+            <Stack.Screen name="BuyerOrders" component={BuyerOrdersScreen} />
+            <Stack.Screen name="Chat" component={ChatScreen}/>
+            <Stack.Screen name="Analytics" component={AnalyticsScreen}/>
           </>
         ) : (
           <>

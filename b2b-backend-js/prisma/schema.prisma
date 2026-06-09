@@ -13,25 +13,29 @@ model User {
   phone        String   @unique
   password     String
   role         String   @default("RETAILER")
+  city String 
   
   profilePic   String?  
   businessName String?  
   businessType String?  
   address      String?  
+  pushToken    String?  // 🚨 ADDED: For AI Expiry Push Notifications
   
-  properties   Property[] @relation("UserProperties") // Properties the user OWNS
-  
-  //for user favourites
+  properties         Property[] @relation("UserProperties") 
   favoriteProperties Property[] @relation("UserFavorites") 
-  products Product[] @relation("UserProducts")
-  buyerNegotiations Negotiation[] @relation("BuyerNegotiations")
+  products           Product[]  @relation("UserProducts")
+  buyerNegotiations  Negotiation[] @relation("BuyerNegotiations")
   sellerNegotiations Negotiation[] @relation("SellerNegotiations")
   offersSent         Offer[]       @relation("UserOffers")
+  buyerShipments     Shipment[] @relation("BuyerShipments")
+  sellerShipments    Shipment[] @relation("SellerShipments")
+  
+  inventories        Inventory[]
+  notifications Notification[]
   
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
-
 
 model Property {
   id           String   @id @default(uuid())
@@ -54,7 +58,6 @@ model Property {
   images       String[] 
   status       String   @default("AVAILABLE")
   
-  // ADD THIS LINE: Users who have favorited this property
   favoritedBy  User[]   @relation("UserFavorites")
   
   createdAt    DateTime @default(now())
@@ -78,9 +81,11 @@ model Product {
   images      String[] 
   isAvailable Boolean  @default(true)
   negotiations Negotiation[]
+  expiryDate  DateTime // 🚨 The AI calculated date
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  shipment    Shipment[]
 }
 
 model Negotiation {
@@ -99,6 +104,8 @@ model Negotiation {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  shipments Shipment?
 }
 
 model Offer {
@@ -119,11 +126,14 @@ model Offer {
 model Inventory {
   id          String   @id @default(uuid())
   userId      String   // The shopkeeper who bought the item
+  user        User     @relation(fields: [userId], references: [id]) // 🚨 FIXED: Prisma requires this relation link!
+  
   name        String   // Name of the product
   category    String
   buyPrice    Float    // The price they bought it for from the Mandi
   quantity    Int      // Current stock they have available to sell
-  unit        String   // KG, Liters, etc.
+  unit        String  
+  expiryDate  DateTime? 
   
   sales       Sale[]   // Relation to keep track of every time they sell a portion of this stock
 
@@ -141,4 +151,50 @@ model Sale {
   profit      Float    // Auto-calculated: (sellPrice - buyPrice) * quantity
   
   soldAt      DateTime @default(now())
+}
+
+model Shipment {
+  id              String   @id @default(uuid())
+  
+  // Link to what is being shipped
+  productId       String
+  product         Product  @relation(fields: [productId], references: [id])
+  quantity        Float    // How much of the product is in the truck
+  
+  // Optional link to the negotiation if this was a custom deal
+  negotiationId   String?  @unique
+  negotiation     Negotiation? @relation(fields: [negotiationId], references: [id])
+  
+  // Direct references for lightning-fast queries
+  buyerId         String
+  sellerId        String
+  buyer           User     @relation("BuyerShipments", fields: [buyerId], references: [id])
+  seller          User     @relation("SellerShipments", fields: [sellerId], references: [id])
+  
+  // Transport Details
+  driverName      String?
+  driverPhone     String?  
+  vehicleNumber   String?
+  transportCost   Float    @default(0) // Rent paid by the buyer
+  
+  // State Machine
+  status          String   @default("PENDING") // "PENDING", "IN_TRANSIT", "DELIVERED"
+  
+  // Live Tracking Data
+  currentLat      Float?
+  currentLng      Float?
+  lastUpdated     DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  title     String
+  message   String
+  type      String   @default("INFO") // e.g., "DEAL", "NEGOTIATION", "WEATHER", "WARNING"
+  isRead    Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
 }

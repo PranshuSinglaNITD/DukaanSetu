@@ -1,117 +1,428 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Animated, Dimensions, Platform, StatusBar } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-// 🚨 Import the Safe Area hook
-import { useSafeAreaInsets } from 'react-native-safe-area-context'; 
+import React, { useContext, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  Animated,
+  Dimensions,
+  Platform,
+  StatusBar,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AuthContext } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
-export default function Sidebar({ isSidebarOpen, toggleSidebar, slideAnim, user, logout }: any) {
+// ─── Menu Config ─────────────────────────────────────────────────────────────
+
+type MenuItem = {
+  label: string;
+  route?: string;
+  icon: string;
+  lib: 'ion' | 'mci';
+  badge?: string | number;
+  accent?: boolean;
+};
+
+type MenuSection = {
+  title: string;
+  items: MenuItem[];
+};
+
+const MENU: MenuSection[] = [
+  {
+    title: 'MAIN',
+    items: [
+      { label: 'Dashboard',    route: 'Landing',     icon: 'view-dashboard-outline', lib: 'mci' },
+      { label: 'Live Mandi',   route: 'Marketplace', icon: 'storefront-outline',     lib: 'mci' },
+      { label: 'Analytics',    route: 'Analytics',   icon: 'chart-line',             lib: 'mci' },
+      {label:'MandiBrain', route:'Chat',icon:'chat-processing',lib:'mci'},
+    ],
+  },
+  {
+    title: 'LISTINGS',
+    items: [
+      { label: 'Add Product',   route: 'AddProduct',  icon: 'basket-plus-outline', lib: 'mci', accent: true },
+      { label: 'List Property', route: 'AddProperty', icon: 'home-plus-outline',   lib: 'mci', accent: true },
+      { label: 'My Inventory',  route: 'Inventory',   icon: 'clipboard-list-outline', lib: 'mci', badge: 3 },
+    ],
+  },
+  {
+    title: 'ORDERS & SALES',
+    items: [
+      { label: 'Pending Orders',      route: 'Orders',       icon: 'package-variant-closed', lib: 'mci', badge: 2 },
+      { label: 'My Sales & Dispatch', route: 'SellerSales',  icon: 'truck-delivery-outline',  lib: 'mci' },
+      { label: 'Track Purchases',     route: 'BuyerOrders',  icon: 'map-marker-path',         lib: 'mci' },
+    ],
+  },
+  {
+    title: 'ACCOUNT',
+    items: [
+      { label: 'Negotiations Inbox', route: 'Negotiations', icon: 'message-text-outline', lib: 'mci', badge: 5 },
+      {label:'Analytics',route:'Analytics',icon:'bar-chart',lib:'mci'},
+      { label: 'Favourites',         route: 'Favourites',   icon: 'heart-outline',         lib: 'mci' },
+      { label: 'Settings',           route: 'Settings',     icon: 'cog-outline',           lib: 'mci' },
+    ],
+  },
+];
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+const MenuRow = ({
+  item,
+  active,
+  onPress,
+}: {
+  item: MenuItem;
+  active: boolean;
+  onPress: () => void;
+}) => {
+  const icon =
+    item.lib === 'mci' ? (
+      <MaterialCommunityIcons
+        name={item.icon as any}
+        size={21}
+        color={active ? '#059669' : item.accent ? '#059669' : '#64748b'}
+      />
+    ) : (
+      <Ionicons
+        name={item.icon as any}
+        size={21}
+        color={active ? '#059669' : item.accent ? '#059669' : '#64748b'}
+      />
+    );
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={[styles.menuRow, active && styles.menuRowActive]}
+    >
+      {/* Active bar */}
+      {active && <View style={styles.activeBar} />}
+
+      {/* Icon wrapper */}
+      <View style={[styles.menuIconWrap, active && styles.menuIconWrapActive]}>
+        {icon}
+      </View>
+
+      <Text
+        style={[
+          styles.menuRowText,
+          active && styles.menuRowTextActive,
+          item.accent && !active && styles.menuRowTextAccent,
+        ]}
+      >
+        {item.label}
+      </Text>
+
+      {/* Badge */}
+      {item.badge !== undefined && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{item.badge}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+};
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function Sidebar({
+  isSidebarOpen,
+  toggleSidebar,
+  slideAnim,
+  logout,
+}: {
+  isSidebarOpen: boolean;
+  toggleSidebar: () => void;
+  slideAnim: Animated.Value;
+  logout: () => void;
+}) {
   const navigation = useNavigation<any>();
-  
-  // 🚨 This automatically calculates the exact height of the Android/iOS bottom navigation bar
-  const insets = useSafeAreaInsets(); 
+  const route      = useRoute();
+  // @ts-ignore
+  const { user }   = useContext(AuthContext);
+  const insets     = useSafeAreaInsets();
+
+  // Defer unmount so the drawer is removed from the tree only AFTER the
+  // close animation finishes (300 ms). This prevents elevation/shadow
+  // from bleeding through the screen edge when the sidebar is hidden.
+  const [shouldRender, setShouldRender] = useState(isSidebarOpen);
+  useEffect(() => {
+    if (isSidebarOpen) {
+      setShouldRender(true);
+    } else {
+      const t = setTimeout(() => setShouldRender(false), 320);
+      return () => clearTimeout(t);
+    }
+  }, [isSidebarOpen]);
+
+  const topPad =
+    Math.max(insets.top, Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0) + 16;
+
+  const navigate = (routeName: string) => {
+    toggleSidebar();
+    navigation.navigate(routeName);
+  };
+
+  const initials = user?.name
+    ? user.name
+        .split(' ')
+        .slice(0, 2)
+        .map((w: string) => w[0])
+        .join('')
+        .toUpperCase()
+    : 'U';
 
   return (
     <>
+      {/* Overlay */}
       {isSidebarOpen && (
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={toggleSidebar} />
+        <TouchableOpacity
+          style={styles.overlay}
+          activeOpacity={1}
+          onPress={toggleSidebar}
+        />
       )}
-      <Animated.View style={[styles.sidebar, { transform: [{ translateX: slideAnim }] }]}>
-        
-        {/* Header dynamically adjusts to the notch/status bar */}
-        <View style={[
-          styles.sidebarHeader, 
-          { paddingTop: Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0) + 20 }
-        ]}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{user?.name?.charAt(0).toUpperCase() || 'U'}</Text>
+
+      {/* Drawer — only mounted while open (or animating closed) to kill shadow bleed */}
+      {shouldRender && (
+      <Animated.View style={[styles.drawer, { transform: [{ translateX: slideAnim }] }]}>
+
+        {/* ── Header ── */}
+        <LinearGradient
+          colors={['#052e16', '#065f46', '#0a7a57']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.drawerHeader, { paddingTop: topPad }]}
+        >
+          {/* Decorative blobs */}
+          <View style={styles.hBlob1} />
+          <View style={styles.hBlob2} />
+
+          {/* Avatar + info */}
+          <View style={styles.headerRow}>
+            <View style={styles.avatarRing}>
+              <View style={styles.avatarInner}>
+                <Text style={styles.avatarText}>{initials}</Text>
+              </View>
+            </View>
+
+            <View style={{ flex: 1, marginLeft: 14 }}>
+              <Text style={styles.headerName} numberOfLines={1}>
+                {user?.name ?? 'Shopkeeper'}
+              </Text>
+              <View style={styles.roleRow}>
+                <MaterialCommunityIcons name="store-check-outline" size={11} color="#fcd34d" />
+                <Text style={styles.headerRole}>{user?.role ?? 'Verified Seller'}</Text>
+              </View>
+            </View>
+
+            {/* Close button */}
+            <TouchableOpacity style={styles.closeBtn} onPress={toggleSidebar}>
+              <Ionicons name="close" size={18} color="rgba(255,255,255,0.6)" />
+            </TouchableOpacity>
           </View>
-          <View>
-            <Text style={styles.sidebarName}>{user?.name}</Text>
-            <Text style={styles.sidebarRole}>{user?.role}</Text>
+
+          {/* Quick stats */}
+          <View style={styles.headerStats}>
+            <View style={styles.hStat}>
+              <Text style={styles.hStatVal}>₹2.4L</Text>
+              <Text style={styles.hStatLbl}>Today</Text>
+            </View>
+            <View style={styles.hStatSep} />
+            <View style={styles.hStat}>
+              <Text style={styles.hStatVal}>18</Text>
+              <Text style={styles.hStatLbl}>Listings</Text>
+            </View>
+            <View style={styles.hStatSep} />
+            <View style={styles.hStat}>
+              <Text style={[styles.hStatVal, { color: '#fbbf24' }]}>5</Text>
+              <Text style={styles.hStatLbl}>Pending</Text>
+            </View>
           </View>
-        </View>
+        </LinearGradient>
 
-        <ScrollView style={styles.sidebarMenu} showsVerticalScrollIndicator={false}>
-          {/* MAIN SECTION */}
-          <Text style={styles.menuLabel}>MAIN</Text>
-          <TouchableOpacity style={styles.sidebarItem} onPress={() => { toggleSidebar(); navigation.navigate('Landing'); }}>
-            <Ionicons name="home-outline" size={24} color="#34495e" />
-            <Text style={styles.sidebarItemText}>Dashboard</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.sidebarItem} onPress={() => { toggleSidebar(); navigation.navigate('Marketplace'); }}>
-            <Ionicons name="storefront-outline" size={24} color="#34495e" />
-            <Text style={styles.sidebarItemText}>Live Mandi</Text>
-          </TouchableOpacity>
-
-          {/* LISTINGS SECTION */}
-          <Text style={styles.menuLabel}>LISTINGS</Text>
-          <TouchableOpacity style={styles.sidebarItem} onPress={() => { toggleSidebar(); navigation.navigate('AddProduct'); }}>
-            <Ionicons name="add-circle-outline" size={24} color="#27ae60" />
-            <Text style={[styles.sidebarItemText, { color: '#27ae60' }]}>Add Product</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.sidebarItem} onPress={() => { toggleSidebar(); navigation.navigate('AddProperty'); }}>
-            <Ionicons name="business-outline" size={24} color="#27ae60" />
-            <Text style={[styles.sidebarItemText, { color: '#27ae60' }]}>List Property</Text>
-          </TouchableOpacity>
-
-          {/* ACCOUNT SECTION */}
-          <Text style={styles.menuLabel}>ACCOUNT</Text>
-          <TouchableOpacity style={styles.sidebarItem} onPress={() => { toggleSidebar(); navigation.navigate('Inventory'); }}>
-            <Ionicons name="cube-outline" size={24} color="#34495e" />
-            <Text style={styles.sidebarItemText}>My Inventory</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.sidebarItem} onPress={() => { toggleSidebar(); navigation.navigate('Negotiations'); }}>
-            <Ionicons name="chatbubbles-outline" size={24} color="#34495e" />
-            <Text style={styles.sidebarItemText}>Negotiations Inbox</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.sidebarItem}>
-            <Ionicons name="heart-outline" size={24} color="#34495e" />
-            <Text style={styles.sidebarItemText}>Favorites</Text>
-          </TouchableOpacity>
-          
-          {/* Small spacer to ensure the bottom item doesn't get hidden under the logout button */}
+        {/* ── Menu ── */}
+        <ScrollView
+          style={styles.menuScroll}
+          contentContainerStyle={styles.menuContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {MENU.map((section) => (
+            <View key={section.title}>
+              <Text style={styles.sectionLabel}>{section.title}</Text>
+              {section.items.map((item) => (
+                <MenuRow
+                  key={item.label}
+                  item={item}
+                  active={route.name === item.route}
+                  onPress={() => item.route ? navigate(item.route) : undefined}
+                />
+              ))}
+            </View>
+          ))}
           <View style={{ height: 20 }} />
         </ScrollView>
 
-        {/* 🚨 Dynamic Padding applied directly to the style array */}
-        <TouchableOpacity 
-          style={[styles.logoutButton, { paddingBottom: Math.max(insets.bottom + 10, 20) }]} 
-          onPress={logout}
-        >
-          <Ionicons name="log-out-outline" size={24} color="#e74c3c" />
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
+        {/* ── Footer ── */}
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 10, 20) }]}>
+          {/* Help row */}
+          <TouchableOpacity style={styles.helpRow}>
+            <MaterialCommunityIcons name="help-circle-outline" size={20} color="#94a3b8" />
+            <Text style={styles.helpText}>Help & Support</Text>
+          </TouchableOpacity>
+
+          <View style={styles.footerDivider} />
+
+          {/* Logout */}
+          <TouchableOpacity style={styles.logoutRow} onPress={logout}>
+            <View style={styles.logoutIconWrap}>
+              <Ionicons name="log-out-outline" size={20} color="#ef4444" />
+            </View>
+            <Text style={styles.logoutText}>Logout</Text>
+            <Ionicons name="chevron-forward" size={16} color="#ef4444" style={{ marginLeft: 'auto' }} />
+          </TouchableOpacity>
+        </View>
+
       </Animated.View>
+      )}
+
     </>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  overlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 10 },
-  sidebar: { position: 'absolute', top: 0, bottom: 0, left: 0, width: width * 0.75, backgroundColor: '#fff', zIndex: 20, elevation: 15, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 15 },
-  
-  // Removed hardcoded padding from header; it's handled dynamically in the JSX now
-  sidebarHeader: { flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#f1f2f6', backgroundColor: '#f8f9fa' },
-  
-  avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#3498db', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  avatarText: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
-  sidebarName: { fontSize: 18, fontWeight: 'bold', color: '#2c3e50' },
-  sidebarRole: { fontSize: 13, color: '#3498db', fontWeight: '700', marginTop: 2, textTransform: 'uppercase' },
-  sidebarMenu: { flex: 1, paddingTop: 10 },
+  overlay: {
+    position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 10,
+  },
+  drawer: {
+    position: 'absolute', top: 0, bottom: 0, left: 0,
+    width: width * 0.78, backgroundColor: '#f8f7f4',
+    zIndex: 20, elevation: 20,
+    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 20,
+    shadowOffset: { width: 6, height: 0 },
+  },
 
-  menuLabel: { fontSize: 12, color: '#95a5a6', fontWeight: 'bold', marginTop: 20, marginBottom: 5, paddingHorizontal: 20, letterSpacing: 1 },
+  // ── Header ──────────────────────────────────────────────────────────────
+  drawerHeader: {
+    paddingHorizontal: 20, paddingBottom: 20, overflow: 'hidden',
+  },
+  hBlob1: {
+    position: 'absolute', right: -30, top: -30,
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: 'rgba(245,158,11,0.1)',
+  },
+  hBlob2: {
+    position: 'absolute', left: -10, bottom: -20,
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: 'rgba(16,185,129,0.1)',
+  },
 
-  sidebarItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 20 },
-  sidebarItemText: { fontSize: 16, color: '#34495e', marginLeft: 15, fontWeight: '500' },
-  
-  // Removed hardcoded paddingBottom from logout; handled dynamically in JSX
-  logoutButton: { flexDirection: 'row', alignItems: 'center', padding: 20, borderTopWidth: 1, borderTopColor: '#f1f2f6', backgroundColor: '#fff' },
-  logoutText: { fontSize: 16, color: '#e74c3c', marginLeft: 15, fontWeight: 'bold' }
+  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
+
+  avatarRing: {
+    width: 52, height: 52, borderRadius: 26,
+    borderWidth: 2, borderColor: 'rgba(251,191,36,0.45)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  avatarInner: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'rgba(245,158,11,0.2)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  avatarText: { color: '#fbbf24', fontSize: 17, fontWeight: '800' },
+
+  headerName: { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: -0.2, marginBottom: 5 },
+  roleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerRole: { color: '#fcd34d', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+
+  closeBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+
+  headerStats: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    borderRadius: 14, padding: 12,
+  },
+  hStat: { flex: 1, alignItems: 'center' },
+  hStatVal: { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  hStatLbl: { color: '#a7f3d0', fontSize: 9, fontWeight: '500', marginTop: 3 },
+  hStatSep: { width: 1, height: 26, backgroundColor: 'rgba(255,255,255,0.12)' },
+
+  // ── Menu ────────────────────────────────────────────────────────────────
+  menuScroll: { flex: 1 },
+  menuContent: { paddingTop: 10, paddingBottom: 8 },
+
+  sectionLabel: {
+    fontSize: 10, fontWeight: '800', color: '#94a3b8',
+    letterSpacing: 1.4, marginTop: 22, marginBottom: 4,
+    paddingHorizontal: 20,
+  },
+
+  menuRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 11, paddingHorizontal: 20,
+    marginHorizontal: 10, borderRadius: 12,
+    marginBottom: 2, position: 'relative', overflow: 'hidden',
+  },
+  menuRowActive: { backgroundColor: '#ecfdf5' },
+  activeBar: {
+    position: 'absolute', left: 0, top: '20%', bottom: '20%',
+    width: 3, borderRadius: 2, backgroundColor: '#059669',
+  },
+  menuIconWrap: {
+    width: 36, height: 36, borderRadius: 10,
+    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: '#f1f5f9', marginRight: 12,
+  },
+  menuIconWrapActive: { backgroundColor: '#d1fae5' },
+
+  menuRowText: { fontSize: 14, color: '#475569', fontWeight: '600', flex: 1 },
+  menuRowTextActive: { color: '#065f46', fontWeight: '700' },
+  menuRowTextAccent: { color: '#059669' },
+
+  badge: {
+    backgroundColor: '#059669', minWidth: 20, height: 20,
+    borderRadius: 10, justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 5,
+  },
+  badgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+
+  // ── Footer ──────────────────────────────────────────────────────────────
+  footer: {
+    backgroundColor: '#fff',
+    borderTopWidth: 1, borderTopColor: '#f1f5f9',
+    paddingTop: 6,
+  },
+  footerDivider: { height: 1, backgroundColor: '#f1f5f9', marginHorizontal: 20, marginVertical: 4 },
+
+  helpRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, paddingHorizontal: 24,
+  },
+  helpText: { fontSize: 14, color: '#94a3b8', fontWeight: '500' },
+
+  logoutRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 13, paddingHorizontal: 20, gap: 12,
+  },
+  logoutIconWrap: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: '#fef2f2',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  logoutText: { fontSize: 14, color: '#ef4444', fontWeight: '700' },
 });

@@ -15,26 +15,63 @@ const CATEGORIES = ['GRAINS', 'PULSES', 'SPICES', 'OIL', 'SUGAR', 'OTHER'];
 const UNITS      = ['KG', 'QUINTAL', 'TON', 'LITRE', 'PIECE'];
 
 export default function AddProductScreen({ navigation }: any) {
-  const [name,     setName]     = useState('');
+  const [name,       setName]     = useState('');
   const [category, setCategory] = useState('');
   const [price,    setPrice]    = useState('');
   const [stock,    setStock]    = useState('');
   const [unit,     setUnit]     = useState('KG');
+  const [shelfLife, setShelfLife] = useState(''); // NEW: Holds AI calculated days
+  
   const [image,    setImage]    = useState<any>(null);
   const [loading,  setLoading]  = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false); // NEW: AI Loading State
   const [errors,   setErrors]   = useState<Record<string, string>>({});
 
   const priceRef = useRef<TextInput>(null);
   const stockRef = useRef<TextInput>(null);
+  const shelfLifeRef = useRef<TextInput>(null);
 
   const clearErr = (k: string) => setErrors(p => { const n = {...p}; delete n[k]; return n; });
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, quality: 0.7,
+      allowsEditing: true, 
+      quality: 0.7,
+      base64: true, // 🚨 CRITICAL: Added to extract data for Gemini
     });
-    if (!result.canceled) setImage(result.assets[0]);
+    
+    if (!result.canceled) {
+      const asset = result.assets[0];
+      setImage(asset);
+      analyzeImage(asset.base64, asset.mimeType || 'image/jpeg');
+    }
+  };
+
+  // 🚨 NEW: The AI Background Engine
+  const analyzeImage = async (base64Str: string | null | undefined, mimeType: string) => {
+    if (!base64Str) return;
+    setIsAnalyzing(true);
+    
+    try {
+      const response = await apiClient.post('/products/analyze-image', {
+        imageBase64: base64Str,
+        mimeType: mimeType
+      });
+
+      const { suggestedName, category: aiCat, estimatedShelfLifeDays } = response.data.analysis;
+
+      // Auto-fill the form cleanly
+      if (suggestedName) { setName(suggestedName); clearErr('name'); }
+      if (aiCat && CATEGORIES.includes(aiCat)) { setCategory(aiCat); clearErr('category'); }
+      if (estimatedShelfLifeDays) { setShelfLife(String(estimatedShelfLifeDays)); clearErr('shelfLife'); }
+
+    } catch (err) {
+      console.log("Vision API Error", err);
+      // Fails silently, user can just type the details manually
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const validate = () => {
@@ -44,6 +81,7 @@ export default function AddProductScreen({ navigation }: any) {
     if (!category)       e.category = 'Select a category';
     if (!price || isNaN(Number(price)) || Number(price) <= 0) e.price = 'Enter a valid price';
     if (!stock || isNaN(Number(stock)) || Number(stock) <= 0) e.stock = 'Enter valid stock quantity';
+    if (!shelfLife || isNaN(Number(shelfLife)) || Number(shelfLife) <= 0) e.shelfLife = 'Enter expiry in days';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -58,7 +96,10 @@ export default function AddProductScreen({ navigation }: any) {
       formData.append('price',    price);
       formData.append('stock',    stock);
       formData.append('unit',     unit);
+      formData.append('estimatedShelfLifeDays', shelfLife); // 🚨 NEW: Sent to backend
+
       formData.append('images', { uri: image.uri, name: 'product.jpg', type: 'image/jpeg' } as any);
+      
       await apiClient.post('/products/create', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       Alert.alert('Listed!', `${name} added to Mandi.`, [{ text: 'OK', onPress: () => navigation.navigate('Landing') }]);
     } catch (err: any) {
@@ -80,13 +121,22 @@ export default function AddProductScreen({ navigation }: any) {
         <Text style={styles.subtitle}>Add to the Mandi marketplace</Text>
 
         {/* Image Picker */}
-        <TouchableOpacity style={[styles.imagePicker, errors.image && styles.inputError]} onPress={pickImage} activeOpacity={0.8}>
+        <TouchableOpacity style={[styles.imagePicker, errors.image && styles.inputError]} onPress={pickImage} activeOpacity={0.8} disabled={isAnalyzing}>
           {image ? (
             <>
               <Image source={{ uri: image.uri }} style={styles.imagePreview} />
               <View style={styles.imageOverlay}>
-                <Ionicons name="camera" size={20} color="#fff" />
-                <Text style={styles.imageOverlayText}>Change Photo</Text>
+                {isAnalyzing ? (
+                  <>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.imageOverlayText}>AI Auto-Filling...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="camera" size={20} color="#fff" />
+                    <Text style={styles.imageOverlayText}>Change Photo</Text>
+                  </>
+                )}
               </View>
             </>
           ) : (
@@ -180,11 +230,31 @@ export default function AddProductScreen({ navigation }: any) {
               keyboardType="numeric"
               value={stock}
               onChangeText={t => { setStock(t); clearErr('stock'); }}
+              returnKeyType="next"
+              onSubmitEditing={() => shelfLifeRef.current?.focus()}
+            />
+          </View>
+          {errors.stock && <Text style={styles.errText}>{errors.stock}</Text>}
+        </View>
+
+        {/* 🚨 NEW: Shelf Life (Auto-filled by AI) */}
+        <View style={styles.fieldWrap}>
+          <Text style={styles.label}>Shelf Life (Days)</Text>
+          <View style={[styles.inputRow, errors.shelfLife && styles.inputError]}>
+            <Ionicons name="calendar-outline" size={16} color={isAnalyzing ? SAFFRON : "#94a3b8"} style={{ marginRight: 8 }} />
+            <TextInput
+              ref={shelfLifeRef}
+              style={styles.inputInner}
+              placeholder={isAnalyzing ? "AI is calculating..." : "Days until expiry"}
+              placeholderTextColor="#94a3b8"
+              keyboardType="numeric"
+              value={shelfLife}
+              onChangeText={t => { setShelfLife(t); clearErr('shelfLife'); }}
               returnKeyType="done"
               onSubmitEditing={handleSubmit}
             />
           </View>
-          {errors.stock && <Text style={styles.errText}>{errors.stock}</Text>}
+          {errors.shelfLife && <Text style={styles.errText}>{errors.shelfLife}</Text>}
         </View>
 
         {/* Submit */}

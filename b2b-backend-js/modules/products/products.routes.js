@@ -11,6 +11,7 @@ import {
   purchaseProduct
 } from './products.controller.js';
 import { payForOrder } from './trade.controller.js';
+import { autoAnalyzeProductImage } from './products.vision.js';
 
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
 
@@ -34,5 +35,6 @@ router.put('/:id', updateProduct);
 router.delete('/:id', deleteProduct);
 router.post('/buy',purchaseProduct);
 router.post('/pay-order',payForOrder);
+router.post('/analyze-image',autoAnalyzeProductImage);
 
 export default router;

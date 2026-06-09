@@ -6,10 +6,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_b2b_key_123';
 
 export const register = async (req, res) => {
   try {
-    const { phone, password, name, role = 'RETAILER' } = req.body;
+    const { phone, password, name, role = 'RETAILER',city } = req.body;
 
-    if (!phone || !password || !name) {
-      return res.status(400).json({ error: 'Phone, password, and name are required.' });
+    if (!phone || !password || !name||!city) {
+      return res.status(400).json({ error: 'Phone, password, city and name are required.' });
     }
 
     // 1. Check PostgreSQL if user already exists
@@ -31,7 +31,7 @@ export const register = async (req, res) => {
         name,
         phone,
         password: hashedPassword,
-        role
+        role,city
       }
     });
 
@@ -46,7 +46,7 @@ export const register = async (req, res) => {
       status: 'success',
       message: 'Account created successfully!',
       token,
-      user: { id: newUser.id, name: newUser.name, phone: newUser.phone, role: newUser.role }
+      user: { id: newUser.id, name: newUser.name, phone: newUser.phone, role: newUser.role,city:newUser.city }
     });
 
   } catch (error) {

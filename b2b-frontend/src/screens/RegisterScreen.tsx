@@ -11,7 +11,6 @@ import {
   Platform,
   ScrollView,
   TextInputProps,
-  Animated,
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 
@@ -100,6 +99,7 @@ const fieldStyles = StyleSheet.create({
 export default function RegisterScreen({ navigation }: any) {
   const [name,        setName]        = useState('');
   const [phone,       setPhone]       = useState('');
+  const [city,        setCity]        = useState(''); // 🚨 NEW: City State
   const [password,    setPassword]    = useState('');
   const [confirmPw,   setConfirmPw]   = useState('');
   const [role,        setRole]        = useState<Role>('RETAILER');
@@ -109,6 +109,7 @@ export default function RegisterScreen({ navigation }: any) {
   const [errors,      setErrors]      = useState<Record<string, string>>({});
 
   const phoneRef   = useRef<TextInput>(null);
+  const cityRef    = useRef<TextInput>(null); // 🚨 NEW: City Ref for Keyboard
   const pwRef      = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
 
@@ -126,6 +127,9 @@ export default function RegisterScreen({ navigation }: any) {
     const digits = phone.replace(/\D/g, '');
     if (!phone.trim())                   e.phone    = 'Phone number is required';
     else if (digits.length < 10)         e.phone    = 'Enter a valid 10-digit number';
+
+    // 🚨 NEW: City Validation
+    if (!city.trim())                    e.city     = 'City is required for weather alerts';
 
     if (!password)                       e.password = 'Password is required';
     else if (password.length < 6)        e.password = 'Must be at least 6 characters';
@@ -146,11 +150,13 @@ export default function RegisterScreen({ navigation }: any) {
 
     setLoading(true);
     try {
+      // 🚨 Ensure your `registerUser` function in AuthContext expects this 5th parameter!
       const response = await registerUser(
         name.trim(),
         phone.replace(/\D/g, ''),
         password,
         role,
+        city.trim() 
       );
       if (!response.success) {
         Alert.alert('Registration Failed', response.message ?? 'Please try again.');
@@ -239,7 +245,7 @@ export default function RegisterScreen({ navigation }: any) {
             value={phone}
             onChangeText={(t) => { setPhone(t); clearError('phone'); }}
             returnKeyType="next"
-            onSubmitEditing={() => pwRef.current?.focus()}
+            onSubmitEditing={() => cityRef.current?.focus()} // 🚨 Jumps to City
             maxLength={10}
             autoComplete="tel"
             error={errors.phone}
@@ -248,6 +254,20 @@ export default function RegisterScreen({ navigation }: any) {
                 <Text style={styles.phonePrefixText}>🇮🇳 +91</Text>
               </View>
             }
+          />
+
+          {/* 🚨 NEW: City Field */}
+          <LabelledInput
+            ref={cityRef}
+            label="City / District"
+            placeholder="e.g. Ludhiana, Delhi"
+            value={city}
+            onChangeText={(t) => { setCity(t); clearError('city'); }}
+            returnKeyType="next"
+            onSubmitEditing={() => pwRef.current?.focus()} // 🚨 Jumps to Password
+            autoCapitalize="words"
+            error={errors.city}
+            prefix={<Text style={styles.inputIcon}>📍</Text>}
           />
 
           {/* Password */}
@@ -437,4 +457,4 @@ const styles = StyleSheet.create({
   loginRow:    { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 4 },
   loginPrompt: { fontSize: 15, color: '#64748b' },
   loginLink:   { fontSize: 15, fontWeight: '700', color: SAFFRON },
-});
+}); 

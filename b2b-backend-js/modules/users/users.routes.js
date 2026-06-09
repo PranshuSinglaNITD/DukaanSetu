@@ -7,8 +7,10 @@ import {
   updateProfile, 
   uploadProfileImage, 
   switchBusinessType, 
-  getBusinessStats 
+  getBusinessStats,
+  savePushToken
 } from './users.controller.js';
+import {authenticateToken} from '../../middlewares/auth.js'
 
 // Ensure the "uploads" directory exists
 if (!fs.existsSync('uploads')) {
@@ -40,5 +42,6 @@ router.get('/business-stats', getBusinessStats);
 
 // 'profileImage' is the field name Postman will look for
 router.post('/upload-image', upload.single('profileImage'), uploadProfileImage);
+router.post('/push-token', authenticateToken, savePushToken);
 
 export default router;

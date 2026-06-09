@@ -21,7 +21,7 @@ export const getSmartPrice = async (req, res) => {
 
     // The Prompt: Giving the AI a strict persona and output format
     const prompt = `
-      YYou are 'MandiBrain', an expert AI pricing assistant for an Indian B2B agricultural marketplace. 
+      You are 'MandiBrain', an expert AI pricing assistant for an Indian B2B agricultural marketplace. 
       A shopkeeper located in ${exactLocation} bought ${name} (${category}) for ₹${buyPrice} per ${unit}. 
       
       Suggest a highly competitive selling price specifically tailored for the local market in ${exactLocation}. 

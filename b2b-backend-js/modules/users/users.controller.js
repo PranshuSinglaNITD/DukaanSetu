@@ -1,5 +1,6 @@
 import prisma from '../../utils/db.js';
 import { z } from 'zod';
+import {Expo} from 'expo-server-sdk'
 
 // Zod Validation Schemas
 const profileSchema = z.object({
@@ -111,3 +112,30 @@ export const getBusinessStats = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch business stats' });
   }
 };
+
+//whenever the user is created along with it a token is created so that whwenever a notification is sent it could be identified via the token created during the user login
+export const savePushToken=async(req,res)=>{
+  try{
+    const userId=req.user.userId;
+    const {pushToken}=req.body
+    if(!pushToken){
+      res.status(400).json({error:"required push token"})
+    }
+    if (!Expo.isExpoPushToken(pushToken)) {
+      return res.status(400).json({ error: "Provided token is not a valid Expo push token" });
+    }
+    //save token to user profile
+    await prisma.update({
+      where:{id:userId},
+      data:{pushToken}
+    });
+    res.status(200).json({ 
+      status: 'success', 
+      message: 'Push token successfully registered for notifications.' 
+    });
+  }
+  catch(error) {
+    console.error("Save Push Token Error:", error);
+    res.status(500).json({ error: 'Failed to store push token' });
+  } 
+}

@@ -1,5 +1,6 @@
 import prisma from '../../utils/db.js';
 import { z } from 'zod';
+import { sendAppNotification } from '../../utils/NotificationService.js';
 
 // 1. Start a New Negotiation
 export const startNegotiation = async (req, res) => {
@@ -39,6 +40,14 @@ export const startNegotiation = async (req, res) => {
       },
       include: { offers: true }
     });
+
+    //the notification would be sent as soon as the negotiation would be created
+    await sendAppNotification(
+    sellerId, 
+    "New Offer Received", 
+    `A buyer just offered ₹${offerPrice} for your respective product.`, 
+    "NEGOTIATION"
+);
 
     res.status(201).json({ status: 'success', data: negotiation });
   } catch (error) {
@@ -178,7 +187,7 @@ export const getNegotiationById = async (req, res) => {
         buyer: { select: { name: true, businessName: true } },
         seller: { select: { name: true, businessName: true } },
         product: { include: { seller: true } }, 
-        offers: { orderBy: { createdAt: 'asc' } } 
+        offers: { orderBy: { createdAt: 'asc' } }
       }
     });
 

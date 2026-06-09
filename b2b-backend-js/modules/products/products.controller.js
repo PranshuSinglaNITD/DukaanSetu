@@ -1,7 +1,7 @@
 import prisma from '../../utils/db.js';
 import { z } from 'zod';
+import { ingestNewMarketData } from '../ai/marketKnowledge.js';
 
-// Validation Schema
 const productSchema = z.object({
   name: z.string().min(2, "Product name is required"),
   description: z.string().optional(),
@@ -10,6 +10,7 @@ const productSchema = z.object({
   price: z.coerce.number().min(0, "Price must be a positive number"),
   unit: z.string().optional().default("KG"),
   stock: z.coerce.number().min(0, "Stock cannot be negative"),
+  estimatedShelfLifeDays: z.coerce.number().min(0,"this cannot be left empty")
 });
 
 // 1. CREATE PRODUCT
@@ -28,6 +29,9 @@ export const createProduct = async (req, res) => {
       return res.status(400).json({ error: "At least one product image is required." });
     }
 
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + parseInt(validatedData.estimatedShelfLifeDays, 10));
+
     // 3. Save the product with images to PostgreSQL
     const newProduct = await prisma.product.create({
       data: {
@@ -38,11 +42,19 @@ export const createProduct = async (req, res) => {
         price: validatedData.price,
         unit: validatedData.unit,
         stock: validatedData.stock,
+        expiryDate: expiryDate,
         sellerId: req.user.userId,
-        images: imageUrls, // Save array of image paths
-      }
+        images: imageUrls, 
+      },
+      include: { seller: { select: { city: true } } }
     });
-
+    const locationStr = newProduct.seller.city ? `in ${newProduct.seller.city}` : `at ${newProduct.mandiName}`;
+    const intelligenceSentence = `SUPPLY ALERT: A new wholesale listing of ${newProduct.stock} ${newProduct.unit} of ${newProduct.name} was just posted ${locationStr} with an asking price of ₹${newProduct.price}/${newProduct.unit}.`;
+    
+    // Fire and forget (don't `await` it, so it doesn't slow down the user's API response)
+    ingestNewMarketData(intelligenceSentence, { source: "internal_listing", crop: newProduct.name })
+      .catch(err => console.error("AI Ingestion skipped:", err));
+      
     res.status(201).json({ status: 'success', data: newProduct });
   } catch (error) {
     console.error("Create Product Error:", error);
@@ -57,8 +69,9 @@ export const createProduct = async (req, res) => {
 export const getAllProducts = async (req, res) => {
   try {
     const currUserId=req.user.userId;
-    const { category, mandi, search }  = req.query;
+    const { category, mandi, search, expiryDate }  = req.query;
     
+    //the product listed by the seller should not be visible to him/her
     const filter = { isAvailable: true, sellerId:{not:currUserId} };
     if (category) filter.category = category.toUpperCase();
     if (mandi) filter.mandiName = { contains: mandi, mode: 'insensitive' };
@@ -186,6 +199,7 @@ export const comparePrices = async (req, res) => {
   }
 };
 
+// 5. PURCHASE PRODUCT
 export const purchaseProduct = async (req, res) => {
   try {
     const { productId, quantity, negotiationId } = req.body;
@@ -231,12 +245,12 @@ export const purchaseProduct = async (req, res) => {
 
     const newStockLevel = product.stock - buyQty;
 
-    // 3. 🚨 THE FIX: Removed 'quantity' from the product.update block!
+    // 3. The Database Transaction
     const result = await prisma.$transaction([
       prisma.product.update({
         where: { id: productId },
         data: { 
-          stock: newStockLevel, // <-- Only update stock
+          stock: newStockLevel, 
           isAvailable: newStockLevel > 0
         }
       }),
@@ -246,11 +260,28 @@ export const purchaseProduct = async (req, res) => {
           name: product.name,
           category: product.category,
           buyPrice: finalUnitPrice, 
-          quantity: buyQty,       // <-- Inventory STILL needs quantity (which is correct)
-          unit: product.unit || 'KG'
+          quantity: buyQty,       
+          unit: product.unit || 'KG',
+          expiryDate: product.expiryDate // 🚨 FIX 2: AI CFO relies on this!
+        }
+      }),
+      prisma.shipment.create({
+        data: {
+          productId: productId,
+          negotiationId: negotiationId || null, 
+          buyerId: buyerId,
+          sellerId: product.sellerId,
+          quantity: buyQty,
+          transportCost: 0, 
+          status: "PENDING"
         }
       })
     ]);
+
+    const intelligenceSentence = `SALE CONFIRMED: A transaction just closed for ${buyQty} ${product.unit} of ${product.name}. The final negotiated clearing price was ₹${finalUnitPrice}/${product.unit}. This is the current actual market value.`;
+    
+    ingestNewMarketData(intelligenceSentence, { source: "internal_sale", crop: product.name })
+      .catch(err => console.error("AI Ingestion skipped:", err));
 
     res.status(201).json({ status: 'success', message: 'Purchase finalized', data: result[1] });
   } catch (error) {

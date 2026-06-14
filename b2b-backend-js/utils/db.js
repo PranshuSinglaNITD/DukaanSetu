@@ -1,5 +1,6 @@
-import 'dotenv/config'; // MAGIC FIX: Forces .env to load before anything else in this file!
-import { PrismaClient } from '@prisma/client';
+import 'dotenv/config'; 
+import pkg from '@prisma/client';
+const { PrismaClient } = pkg;
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 

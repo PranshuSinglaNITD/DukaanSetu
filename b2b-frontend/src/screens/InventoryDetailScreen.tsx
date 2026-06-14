@@ -11,9 +11,21 @@ export default function InventoryDetailScreen({ route, navigation }: any) {
   const [sellPrice, setSellPrice] = useState('');
   const [quantity, setQuantity] = useState('');
   
+  // 🚨 NEW: Khata Customer & Payment States
+  const [buyerName, setBuyerName] = useState('');
+  const [buyerPhone, setBuyerPhone] = useState('');
+  const [amountPaid, setAmountPaid] = useState('');
+
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<any>(null);
   const [selling, setSelling] = useState(false);
+
+  // 🚨 Dynamic Math for UI Khata Updates
+  const currentQty = parseInt(quantity, 10) || 0;
+  const currentPrice = parseFloat(sellPrice) || 0;
+  const totalBill = currentQty * currentPrice;
+  const paidNow = amountPaid === '' ? totalBill : (parseFloat(amountPaid) || 0);
+  const remainingDue = totalBill - paidNow;
 
   // 🤖 The AI Pricing Function
   const fetchSmartPrice = async () => {
@@ -38,17 +50,22 @@ export default function InventoryDetailScreen({ route, navigation }: any) {
   // 💰 The Sell Function
   const handleSell = async () => {
     if (!sellPrice || !quantity) return Alert.alert("Error", "Enter price and quantity");
-    if (parseInt(quantity) > item.quantity) return Alert.alert("Error", "Not enough stock!");
+    if (parseInt(quantity, 10) > item.quantity) return Alert.alert("Error", "Not enough stock!");
+    if (paidNow > totalBill) return Alert.alert("Error", "Amount paid cannot be greater than the total bill.");
 
     setSelling(true);
     try {
+      // 🚨 Pass the new Khata fields to your updated backend controller
       await apiClient.post('/inventory/sell', {
         inventoryId: item.id,
         quantitySold: quantity,
-        sellPrice: sellPrice
+        sellPrice: sellPrice,
+        buyerName: buyerName,
+        buyerPhone: buyerPhone,
+        amountPaid: paidNow
       });
       
-      Alert.alert("Success!", "Sale recorded and profit calculated.");
+      Alert.alert("Success!", "Sale recorded and Khata updated.");
       navigation.goBack(); // Go back to inventory list
     } catch (error: any) {
       Alert.alert("Error", error.response?.data?.error || "Failed to sell item");
@@ -66,7 +83,7 @@ export default function InventoryDetailScreen({ route, navigation }: any) {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         
         {/* Stats Row */}
         <View style={styles.statsRow}>
@@ -104,19 +121,65 @@ export default function InventoryDetailScreen({ route, navigation }: any) {
 
         {/* Action Form */}
         <View style={styles.formCard}>
-          <Text style={styles.formTitle}>Record a Sale</Text>
+          <Text style={styles.formTitle}>Record an Offline Sale</Text>
           
-          <Text style={styles.inputLabel}>Selling Price (per {item.unit})</Text>
-          <TextInput style={styles.input} placeholder="₹ 0.00" value={sellPrice} onChangeText={setSellPrice} keyboardType="numeric" />
+          <View style={styles.row}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={styles.inputLabel}>Selling Price (₹)</Text>
+              <TextInput style={styles.input} placeholder="0.00" value={sellPrice} onChangeText={setSellPrice} keyboardType="numeric" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.inputLabel}>Quantity ({item.unit})</Text>
+              <TextInput style={styles.input} placeholder={`Max: ${item.quantity}`} value={quantity} onChangeText={setQuantity} keyboardType="numeric" />
+            </View>
+          </View>
+
+          {/* 🚨 NEW: KHATA UI BLOCK */}
+          <View style={styles.khataDivider} />
+          <Text style={styles.khataTitle}>Customer Details (Khata)</Text>
           
-          <Text style={styles.inputLabel}>Quantity Sold</Text>
-          <TextInput style={styles.input} placeholder={`Max: ${item.quantity}`} value={quantity} onChangeText={setQuantity} keyboardType="numeric" />
+          <TextInput 
+            style={styles.input} 
+            placeholder="Customer Name (e.g. Ramesh)" 
+            value={buyerName} 
+            onChangeText={setBuyerName} 
+          />
+          <TextInput 
+            style={styles.input} 
+            placeholder="Phone Number (Optional)" 
+            value={buyerPhone} 
+            onChangeText={setBuyerPhone} 
+            keyboardType="phone-pad" 
+          />
+
+          <View style={styles.billBox}>
+            <View style={styles.billRow}>
+              <Text style={styles.billText}>Total Bill:</Text>
+              <Text style={styles.billValue}>₹{totalBill.toLocaleString('en-IN')}</Text>
+            </View>
+            <View style={styles.billRow}>
+              <Text style={styles.billText}>Remaining Due (Udhaar):</Text>
+              <Text style={[styles.billValue, remainingDue > 0 ? {color: '#e74c3c'} : {color: '#27ae60'}]}>
+                ₹{remainingDue < 0 ? 0 : remainingDue.toLocaleString('en-IN')}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.inputLabel}>Advance Cash Paid Upfront (₹)</Text>
+          <TextInput 
+            style={[styles.input, { borderColor: '#3498db', borderWidth: 1.5 }]} 
+            placeholder={`Leave blank if paying full ₹${totalBill}`} 
+            value={amountPaid} 
+            onChangeText={setAmountPaid} 
+            keyboardType="numeric" 
+          />
 
           <TouchableOpacity style={styles.sellButton} onPress={handleSell} disabled={selling}>
-            {selling ? <ActivityIndicator color="#fff" /> : <Text style={styles.sellText}>Confirm Sale</Text>}
+            {selling ? <ActivityIndicator color="#fff" /> : <Text style={styles.sellText}>Confirm Sale & Update Khata</Text>}
           </TouchableOpacity>
         </View>
 
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -145,8 +208,18 @@ const styles = StyleSheet.create({
 
   formCard: { backgroundColor: '#fff', padding: 20, borderRadius: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
   formTitle: { fontSize: 18, fontWeight: 'bold', color: '#2c3e50', marginBottom: 15 },
-  inputLabel: { fontSize: 14, fontWeight: '600', color: '#34495e', marginBottom: 8 },
-  input: { backgroundColor: '#f8f9fa', padding: 15, borderRadius: 12, marginBottom: 20, fontSize: 16, borderWidth: 1, borderColor: '#ecf0f1' },
-  sellButton: { backgroundColor: '#27ae60', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 5 },
-  sellText: { color: '#fff', fontWeight: 'bold', fontSize: 18 }
+  row: { flexDirection: 'row', justifyContent: 'space-between' },
+  inputLabel: { fontSize: 13, fontWeight: '600', color: '#34495e', marginBottom: 6 },
+  input: { backgroundColor: '#f8f9fa', padding: 14, borderRadius: 10, marginBottom: 16, fontSize: 15, borderWidth: 1, borderColor: '#ecf0f1', color: '#2c3e50' },
+  
+  // Khata Specific Styles
+  khataDivider: { height: 1, backgroundColor: '#ecf0f1', marginVertical: 10 },
+  khataTitle: { fontSize: 15, fontWeight: 'bold', color: '#7f8c8d', marginBottom: 12 },
+  billBox: { backgroundColor: '#f1f8ff', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#d6eaf8', marginBottom: 16 },
+  billRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
+  billText: { fontSize: 14, color: '#34495e', fontWeight: '500' },
+  billValue: { fontSize: 15, fontWeight: 'bold', color: '#2c3e50' },
+
+  sellButton: { backgroundColor: '#27ae60', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  sellText: { color: '#fff', fontWeight: 'bold', fontSize: 16 }
 });

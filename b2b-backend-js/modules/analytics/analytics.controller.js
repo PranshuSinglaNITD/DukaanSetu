@@ -4,29 +4,42 @@ export const getBusinessAnalytics = async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    // 1. Fetch all goods bought (Expenses)
+    // 1. Fetch total money spent on inventory (Cash Outflow)
     const purchases = await prisma.inventory.findMany({
       where: { userId: userId },
-      select: { buyPrice: true, quantity: true, createdAt: true, name: true }
+      select: { buyPrice: true, quantity: true, createdAt: true }
     });
 
-    // 2. Fetch all completed sales (Revenue)
-    const sales = await prisma.shipment.findMany({
-      where: { sellerId: userId, status: 'DELIVERED' },
-      include: { product: { select: { name: true, price: true } } }
+    // 2. 🚨 FIXED THE PRISMA CRASH: Filter through the inventory relation!
+    const sales = await prisma.sale.findMany({
+      where: {
+        inventory: { userId: userId } // Queries sales where the linked inventory belongs to this user
+      },
+      select: {
+        sellPrice: true,
+        quantity: true,
+        profit: true, // We will use your exact database profit now!
+        soldAt: true,
+        inventory: {
+          select: { name: true } // Fetch crop name
+        }
+      },
+      orderBy: { soldAt: 'desc' }
     });
 
     // ==========================================
     // PARSE FINANCIAL KPIS
     // ==========================================
-    let totalExpenses = purchases.reduce((sum, item) => sum + (item.buyPrice * item.quantity), 0);
+    const totalExpenses = purchases.reduce((sum, item) => sum + (item.buyPrice * item.quantity), 0);
     
-    let totalRevenue = sales.reduce((sum, item) => {
-      const itemPrice = item.product?.price || 0;
-      return sum + (item.quantity * itemPrice);
-    }, 0);
+    // 🚨 FIXED PROFIT LOGIC: Use exact database values
+    let totalRevenue = 0;
+    let netProfitOrLoss = 0;
 
-    const netProfitOrLoss = totalRevenue - totalExpenses;
+    sales.forEach(sale => {
+      totalRevenue += (sale.sellPrice * sale.quantity);
+      netProfitOrLoss += sale.profit; // Sums up your auto-calculated profit column directly!
+    });
 
     // ==========================================
     // AGGREGATE MONTHLY TRENDS (For Line Graph)
@@ -41,22 +54,14 @@ export const getBusinessAnalytics = async (req, res) => {
       monthlyData[monthNames[d.getMonth()]] = { revenue: 0, profit: 0 };
     }
 
-    // Map Revenue into Months
+    // Map Revenue & Profit into Months
     sales.forEach(sale => {
-      const mName = monthNames[new Date(sale.lastUpdated).getMonth()];
+      if (!sale.soldAt) return;
+      const mName = monthNames[new Date(sale.soldAt).getMonth()];
+      
       if (monthlyData[mName]) {
-        const value = sale.quantity * (sale.product?.price || 0);
-        monthlyData[mName].revenue += value;
-        monthlyData[mName].profit += value; // Base profit derivation accumulation
-      }
-    });
-
-    // Deduct Expenses from corresponding Months
-    purchases.forEach(purch => {
-      const mName = monthNames[new Date(purch.createdAt).getMonth()];
-      if (monthlyData[mName]) {
-        const cost = purch.quantity * purch.buyPrice;
-        monthlyData[mName].profit -= cost;
+        monthlyData[mName].revenue += (sale.sellPrice * sale.quantity);
+        monthlyData[mName].profit += sale.profit; // Real profit per month!
       }
     });
 
@@ -69,12 +74,11 @@ export const getBusinessAnalytics = async (req, res) => {
     // ==========================================
     const cropDistribution = {};
     sales.forEach(sale => {
-      const cropName = sale.product?.name || "Other";
+      const cropName = sale.inventory?.name || "Other Commodities";
       if (!cropDistribution[cropName]) cropDistribution[cropName] = 0;
       cropDistribution[cropName] += sale.quantity;
     });
 
-    // Map into React Native Chart Kit format with distinct agricultural colors
     const colors = ['#1B4D3E', '#4CAF50', '#8BC34A', '#CDDC39', '#FFEB3B', '#FFC107'];
     const pieChartData = Object.keys(cropDistribution).map((crop, index) => ({
       name: crop,
@@ -82,9 +86,8 @@ export const getBusinessAnalytics = async (req, res) => {
       color: colors[index % colors.length],
       legendFontColor: '#4A5568',
       legendFontSize: 12
-    })).sort((a, b) => b.volume - a.volume).slice(0, 4); // Top 4 crops
+    })).sort((a, b) => b.volume - a.volume).slice(0, 4);
 
-    // Return the response payloads
     return res.status(200).json({
       status: 'success',
       summary: {

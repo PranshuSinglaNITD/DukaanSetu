@@ -1,25 +1,56 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, ActivityIndicator, Dimensions, SafeAreaView } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  StyleSheet, Text, View, ScrollView, ActivityIndicator,
+  Dimensions, TouchableOpacity, Animated,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { LineChart, PieChart } from 'react-native-chart-kit';
-import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import apiClient from '../api/client';
 
-const screenWidth = Dimensions.get('window').width;
+const W = Dimensions.get('window').width;
 
-export default function AnalyticsScreen() {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<any>(null);
-
+// ─── Animated entrance ────────────────────────────────────────────────────────
+const FadeIn = ({ children, delay = 0 }: any) => {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const slideY  = useRef(new Animated.Value(18)).current;
   useEffect(() => {
-    fetchAnalyticsData();
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 420, delay, useNativeDriver: true }),
+      Animated.spring(slideY,  { toValue: 0, delay,          useNativeDriver: true, speed: 14, bounciness: 7 }),
+    ]).start();
   }, []);
+  return <Animated.View style={{ opacity, transform: [{ translateY: slideY }] }}>{children}</Animated.View>;
+};
 
-  const fetchAnalyticsData = async () => {
+// ─── Single KPI card ──────────────────────────────────────────────────────────
+const KpiCard = ({ label, value, icon, color, bg, delay }: any) => (
+  <FadeIn delay={delay}>
+    <View style={[styles.kpiCard, { backgroundColor: bg }]}>
+      <View style={[styles.kpiIconWrap, { backgroundColor: color + '22' }]}>
+        <MaterialCommunityIcons name={icon} size={18} color={color} />
+      </View>
+      <Text style={styles.kpiValue}>{value}</Text>
+      <Text style={styles.kpiLabel}>{label}</Text>
+    </View>
+  </FadeIn>
+);
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
+export default function AnalyticsScreen({ navigation }: any) {
+  const [loading, setLoading] = useState(true);
+  const [data,    setData]    = useState<any>(null);
+  const [period,  setPeriod]  = useState<'week' | 'month' | 'year'>('month');
+
+  useEffect(() => { fetchData(); }, []);
+
+  const fetchData = async () => {
     try {
-      const response = await apiClient.get('/analytics');
-      setData(response.data);
-    } catch (error) {
-      console.error("Failed to load dashboard statistics:", error);
+      const res = await apiClient.get('/analytics');
+      setData(res.data);
+    } catch (e) {
+      console.error('Analytics fetch failed:', e);
     } finally {
       setLoading(false);
     }
@@ -27,9 +58,9 @@ export default function AnalyticsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color="#1B4D3E" />
-        <Text style={styles.loaderText}>Compilating Mandi Ledgers...</Text>
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color="#059669" />
+        <Text style={styles.loaderText}>Compiling Mandi Ledgers…</Text>
       </View>
     );
   }
@@ -37,124 +68,280 @@ export default function AnalyticsScreen() {
   const { summary, charts } = data;
   const isProfit = summary.netProfitOrLoss >= 0;
 
+  const PERIODS = ['week', 'month', 'year'] as const;
+
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Top Fixed Branding Title */}
+    <SafeAreaView style={styles.safe} edges={['top']}>
+
+      {/* ── Header ── */}
       <View style={styles.header}>
-        <MaterialCommunityIcons name="google-analytics" size={22} color="#1B4D3E" />
-        <Text style={styles.headerTitle}>MandiBrain Financial Dash</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={20} color="#1e293b" />
+        </TouchableOpacity>
+        <View style={styles.headerMid}>
+          <MaterialCommunityIcons name="chart-line" size={16} color="#059669" />
+          <Text style={styles.headerTitle}>MandiBrain Analytics</Text>
+        </View>
+        <TouchableOpacity style={styles.backBtn}>
+          <MaterialCommunityIcons name="share-variant-outline" size={18} color="#64748b" />
+        </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
-        {/* ==========================================
-            1. CORE KPI CARDS GRID BLOCK
-           ========================================== */}
-        <View style={[styles.mainProfitCard, { backgroundColor: isProfit ? '#E8F5E9' : '#FEF2F2', borderColor: isProfit ? '#A3B899' : '#FCA5A5' }]}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardLabelText}>NET BUSINESS YIELD (PROFIT/LOSS)</Text>
-            <Feather name={isProfit ? "trending-up" : "trending-down"} size={20} color={isProfit ? "#15803D" : "#B91C1C"} />
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* ── Hero profit card ── */}
+        <FadeIn delay={0}>
+          <LinearGradient
+            colors={isProfit ? ['#052e16', '#065f46', '#0a7a57'] : ['#450a0a', '#7f1d1d', '#991b1b']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={styles.heroCard}
+          >
+            <View style={styles.heroBlob} />
+            <Text style={styles.heroLabel}>NET BUSINESS YIELD</Text>
+            <Text style={styles.heroValue}>
+              {isProfit ? '+' : ''}₹{summary.netProfitOrLoss.toLocaleString('en-IN')}
+            </Text>
+            <View style={styles.heroRow}>
+              <View style={styles.heroPill}>
+                <MaterialCommunityIcons
+                  name={isProfit ? 'trending-up' : 'trending-down'}
+                  size={12} color={isProfit ? '#34d399' : '#fca5a5'}
+                />
+                <Text style={[styles.heroPillText, { color: isProfit ? '#34d399' : '#fca5a5' }]}>
+                  {isProfit ? 'Profitable' : 'Loss'} · {summary.profitMargin}% margin
+                </Text>
+              </View>
+            </View>
+
+            {/* Inline mini stats */}
+            <View style={styles.heroStats}>
+              <View style={styles.heroStat}>
+                <Text style={styles.heroStatVal}>₹{summary.totalRevenue.toLocaleString('en-IN')}</Text>
+                <Text style={styles.heroStatLbl}>Revenue</Text>
+              </View>
+              <View style={styles.heroStatSep} />
+              <View style={styles.heroStat}>
+                <Text style={styles.heroStatVal}>₹{summary.totalExpenses.toLocaleString('en-IN')}</Text>
+                <Text style={styles.heroStatLbl}>Expenses</Text>
+              </View>
+              <View style={styles.heroStatSep} />
+              <View style={styles.heroStat}>
+                <Text style={styles.heroStatVal}>{summary.totalOrders ?? '—'}</Text>
+                <Text style={styles.heroStatLbl}>Orders</Text>
+              </View>
+            </View>
+          </LinearGradient>
+        </FadeIn>
+
+        {/* ── KPI grid ── */}
+        <View style={styles.kpiGrid}>
+          <KpiCard delay={80}  label="Avg Deal Size"   value={`₹${(summary.avgDealSize ?? 0).toLocaleString('en-IN')}`}  icon="handshake-outline"    color="#3b82f6" bg="#eff6ff" />
+          <KpiCard delay={140} label="Active Listings" value={summary.activeListings ?? '—'}                              icon="tag-multiple-outline"  color="#8b5cf6" bg="#f5f3ff" />
+          <KpiCard delay={200} label="New Buyers"      value={summary.newBuyers ?? '—'}                                   icon="account-plus-outline"  color="#f59e0b" bg="#fffbeb" />
+          <KpiCard delay={260} label="Repeat Buyers"   value={`${summary.repeatBuyerPct ?? 0}%`}                          icon="account-sync-outline"  color="#059669" bg="#ecfdf5" />
+        </View>
+
+        {/* ── Period toggle ── */}
+        <FadeIn delay={300}>
+          <View style={styles.periodRow}>
+            <Text style={styles.sectionTitle}>Revenue & Profit Trend</Text>
+            <View style={styles.periodToggle}>
+              {PERIODS.map(p => (
+                <TouchableOpacity
+                  key={p}
+                  style={[styles.periodBtn, period === p && styles.periodBtnActive]}
+                  onPress={() => setPeriod(p)}
+                >
+                  <Text style={[styles.periodText, period === p && styles.periodTextActive]}>
+                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-          <Text style={[styles.profitValueText, { color: isProfit ? '#15803D' : '#B91C1C' }]}>
-            ₹{summary.netProfitOrLoss.toLocaleString('en-IN')}
-          </Text>
-          <Text style={styles.subMarginText}>Net Margin Rate: {summary.profitMargin}%</Text>
-        </View>
+        </FadeIn>
 
-        <View style={styles.kpiRowGrid}>
-          <View style={styles.subKpiCard}>
-            <Text style={styles.subKpiLabel}>TOTAL SALES REVENUE</Text>
-            <Text style={[styles.subKpiValue, { color: '#1E3A8A' }]}>₹{summary.totalRevenue.toLocaleString('en-IN')}</Text>
+        {/* ── Line chart ── */}
+        <FadeIn delay={360}>
+          <View style={styles.chartCard}>
+            <LineChart
+              data={{
+                labels: charts.lineChart.labels,
+                datasets: [
+                  { data: charts.lineChart.revenue, color: (o = 1) => `rgba(5,150,105,${o})`,   strokeWidth: 3 },
+                  { data: charts.lineChart.profit,  color: (o = 1) => `rgba(251,191,36,${o})`,  strokeWidth: 2 },
+                ],
+                legend: ['Revenue', 'Net Profit'],
+              }}
+              width={W - 64}
+              height={200}
+              chartConfig={{
+                backgroundColor: '#fff',
+                backgroundGradientFrom: '#fff',
+                backgroundGradientTo: '#fff',
+                decimalPlaces: 0,
+                color: (o = 1) => `rgba(30,41,59,${o})`,
+                labelColor: (o = 1) => `rgba(100,116,139,${o})`,
+                propsForDots: { r: '4', strokeWidth: '2', stroke: '#059669' },
+                propsForBackgroundLines: { stroke: '#f1f5f9', strokeDasharray: '' },
+              }}
+              bezier
+              style={{ borderRadius: 12 }}
+              withInnerLines
+              withOuterLines={false}
+            />
           </View>
-          <View style={styles.subKpiCard}>
-            <Text style={styles.subKpiLabel}>TOTAL INFLOW OUTDAYS</Text>
-            <Text style={[styles.subKpiValue, { color: '#7C2D12' }]}>₹{summary.totalExpenses.toLocaleString('en-IN')}</Text>
+        </FadeIn>
+
+        {/* ── Pie chart ── */}
+        <FadeIn delay={420}>
+          <View style={styles.chartCard}>
+            <Text style={styles.chartTitle}>Commodity Volume Split</Text>
+            <PieChart
+              data={charts.pieChart}
+              width={W - 64}
+              height={180}
+              chartConfig={{ color: (o = 1) => `rgba(0,0,0,${o})` }}
+              accessor="volume"
+              backgroundColor="transparent"
+              paddingLeft="10"
+              absolute
+            />
           </View>
-        </View>
+        </FadeIn>
 
-        {/* ==========================================
-            2. LINE TREND GRAPH LINE
-           ========================================== */}
-        <View style={styles.chartWrapperSection}>
-          <Text style={styles.chartHeadingSection}>Monthly Revenue & Yield Matrix</Text>
-          <LineChart
-            data={{
-              labels: charts.lineChart.labels,
-              datasets: [
-                {
-                  data: charts.lineChart.revenue,
-                  color: (opacity = 1) => `rgba(30, 58, 138, ${opacity})`, // Dark Blue line for revenue
-                  strokeWidth: 3
-                },
-                {
-                  data: charts.lineChart.profit,
-                  color: (opacity = 1) => `rgba(27, 77, 62, ${opacity})`, // Forest Green line for margins
-                  strokeWidth: 2
-                }
-              ],
-              legend: ["Total Inflow Revenue", "Calculated Net Margin"]
-            }}
-            width={screenWidth - 32}
-            height={220}
-            chartConfig={{
-              backgroundColor: '#FFFFFF',
-              backgroundGradientFrom: '#FFFFFF',
-              backgroundGradientTo: '#FFFFFF',
-              decimalPlaces: 0,
-              color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-              labelColor: (opacity = 1) => `rgba(74, 85, 104, ${opacity})`,
-              propsForDots: { r: '4', strokeWidth: '1', stroke: '#1B4D3E' }
-            }}
-            bezier
-            style={styles.chartNativeStyle}
-          />
-        </View>
+        {/* ── Top commodities list ── */}
+        {charts.topCommodities?.length > 0 && (
+          <FadeIn delay={480}>
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}>Top Commodities by Revenue</Text>
+              {charts.topCommodities.map((item: any, i: number) => (
+                <View key={item.name} style={styles.commRow}>
+                  <View style={styles.commRank}>
+                    <Text style={styles.commRankText}>#{i + 1}</Text>
+                  </View>
+                  <MaterialCommunityIcons name="grain" size={16} color="#059669" style={{ marginRight: 10 }} />
+                  <Text style={styles.commName}>{item.name}</Text>
+                  <View style={{ flex: 1, marginHorizontal: 12 }}>
+                    <View style={styles.commBarBg}>
+                      <View style={[styles.commBarFill, { width: `${item.pct}%` }]} />
+                    </View>
+                  </View>
+                  <Text style={styles.commVal}>₹{item.revenue.toLocaleString('en-IN')}</Text>
+                </View>
+              ))}
+            </View>
+          </FadeIn>
+        )}
 
-        {/* ==========================================
-            3. PIE CHART DISTRIBUTION
-           ========================================== */}
-        <View style={styles.chartWrapperSection}>
-          <Text style={styles.chartHeadingSection}>Top Commodity Sourcing Volume</Text>
-          <PieChart
-            data={charts.pieChart}
-            width={screenWidth - 32}
-            height={180}
-            chartConfig={{
-              color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`
-            }}
-            accessor={"volume"}
-            backgroundColor={"transparent"}
-            paddingLeft={"15"}
-            center={[0, 0]}
-            absolute
-          />
-        </View>
+        {/* ── Insight card ── */}
+        <FadeIn delay={520}>
+          <LinearGradient colors={['#fffbeb', '#fef3c7']} style={styles.insightCard}>
+            <MaterialCommunityIcons name="lightbulb-on-outline" size={20} color="#d97706" />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.insightLabel}>AI INSIGHT</Text>
+              <Text style={styles.insightText}>
+                Your profit margin is <Text style={{ fontWeight: '700' }}>{summary.profitMargin}%</Text>.
+                Top performers in your region average <Text style={{ fontWeight: '700' }}>22%</Text> — consider renegotiating your Wheat procurement costs.
+              </Text>
+            </View>
+          </LinearGradient>
+        </FadeIn>
 
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  header: { height: 55, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', elevation: 1 },
-  headerTitle: { fontSize: 15, fontWeight: '700', color: '#1B4D3E', marginLeft: 8 },
-  scrollContent: { padding: 16 },
-  loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
-  loaderText: { marginTop: 12, fontSize: 13, color: '#1B4D3E', fontWeight: '500' },
-  
-  mainProfitCard: { padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 16, elevation: 1 },
-  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardLabelText: { fontSize: 10, fontWeight: '700', color: '#4A5568', letterSpacing: 0.5 },
-  profitValueText: { fontSize: 24, fontWeight: '800', marginTop: 8 },
-  subMarginText: { fontSize: 12, color: '#4A5568', marginTop: 4, fontWeight: '500' },
-  
-  kpiRowGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
-  subKpiCard: { width: '48%', backgroundColor: '#FFF', padding: 14, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' },
-  subKpiLabel: { fontSize: 9, fontWeight: '700', color: '#718096', letterSpacing: 0.3 },
-  subKpiValue: { fontSize: 15, fontWeight: '700', marginTop: 6 },
-  
-  chartWrapperSection: { backgroundColor: '#FFF', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16 },
-  chartHeadingSection: { fontSize: 13, fontWeight: '700', color: '#1A202C', marginBottom: 14 },
-  chartNativeStyle: { marginVertical: 8, borderRadius: 8 }
+  safe:   { flex: 1, backgroundColor: '#f5efe6' },
+  loader: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5efe6', gap: 12 },
+  loaderText: { fontSize: 13, color: '#059669', fontWeight: '600' },
+
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 10,
+    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
+    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2,
+  },
+  backBtn: {
+    width: 38, height: 38, borderRadius: 11,
+    backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  headerMid: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  headerTitle: { fontSize: 15, fontWeight: '800', color: '#0f172a', letterSpacing: -0.2 },
+
+  scroll: { padding: 16 },
+
+  // ── Hero ──
+  heroCard: {
+    borderRadius: 24, padding: 22, marginBottom: 16, overflow: 'hidden',
+    shadowColor: '#052e16', shadowOpacity: 0.25, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10,
+  },
+  heroBlob: {
+    position: 'absolute', right: -40, top: -40,
+    width: 150, height: 150, borderRadius: 75,
+    backgroundColor: 'rgba(245,158,11,0.1)',
+  },
+  heroLabel: { color: '#6ee7b7', fontSize: 10, fontWeight: '800', letterSpacing: 1.4, marginBottom: 8 },
+  heroValue: { color: '#fff', fontSize: 32, fontWeight: '900', letterSpacing: -1, marginBottom: 10 },
+  heroRow:  { flexDirection: 'row', marginBottom: 18 },
+  heroPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
+  },
+  heroPillText: { fontSize: 11, fontWeight: '700' },
+  heroStats: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.18)', borderRadius: 14, padding: 12 },
+  heroStat:  { flex: 1, alignItems: 'center' },
+  heroStatVal: { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: -0.3 },
+  heroStatLbl: { color: '#a7f3d0', fontSize: 9, fontWeight: '500', marginTop: 3 },
+  heroStatSep: { width: 1, height: 26, backgroundColor: 'rgba(255,255,255,0.12)' },
+
+  // ── KPI grid ──
+  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10, marginBottom: 20 },
+  kpiCard: {
+    width: (W - 42) / 2, padding: 14, borderRadius: 16,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2,
+  },
+  kpiIconWrap: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  kpiValue: { fontSize: 20, fontWeight: '800', color: '#0f172a', letterSpacing: -0.4 },
+  kpiLabel: { fontSize: 11, color: '#64748b', fontWeight: '500', marginTop: 3 },
+
+  // ── Period toggle ──
+  periodRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  sectionTitle: { fontSize: 15, fontWeight: '800', color: '#0f172a', letterSpacing: -0.2 },
+  periodToggle: { flexDirection: 'row', backgroundColor: '#f1f5f9', borderRadius: 10, padding: 3 },
+  periodBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  periodBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
+  periodText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
+  periodTextActive: { color: '#0f172a', fontWeight: '800' },
+
+  // ── Charts ──
+  chartCard: {
+    backgroundColor: '#fff', borderRadius: 18, padding: 16, marginBottom: 14,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2,
+  },
+  chartTitle: { fontSize: 13, fontWeight: '800', color: '#0f172a', marginBottom: 14, letterSpacing: -0.1 },
+
+  // ── Commodities ──
+  commRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  commRank: { width: 24, height: 24, borderRadius: 7, backgroundColor: '#f1f5f9', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+  commRankText: { fontSize: 10, fontWeight: '800', color: '#475569' },
+  commName: { fontSize: 13, fontWeight: '700', color: '#1e293b', width: 70 },
+  commBarBg: { height: 6, backgroundColor: '#f1f5f9', borderRadius: 4, overflow: 'hidden' },
+  commBarFill: { height: 6, backgroundColor: '#059669', borderRadius: 4 },
+  commVal: { fontSize: 12, fontWeight: '700', color: '#1e293b' },
+
+  // ── Insight ──
+  insightCard: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    padding: 16, borderRadius: 16,
+    borderWidth: 1, borderColor: '#fde68a',
+  },
+  insightLabel: { fontSize: 9, fontWeight: '800', color: '#92400e', letterSpacing: 1.2, marginBottom: 4 },
+  insightText:  { fontSize: 12, color: '#78350f', lineHeight: 18 },
 });

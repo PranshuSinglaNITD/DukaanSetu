@@ -15,18 +15,19 @@ export const AuthProvider = ({ children }) => {
 
   const checkLoginStatus = async () => {
     try {
+      // 🚨 Ensure we use exactly 'userToken'
       const token = await SecureStore.getItemAsync('userToken');
       const userData = await SecureStore.getItemAsync('userData');
 
       if (token && userData) {
-        // Automatically attach the token to all future API requests!
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         setUser(JSON.parse(userData));
       }
     } catch (error) {
       console.log("Error checking local storage:", error);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   // 2. Login Function
@@ -35,11 +36,10 @@ export const AuthProvider = ({ children }) => {
       const response = await apiClient.post('/auth/login', { phone, password });
       const { token, user: loggedInUser } = response.data;
 
-      // Save to device
+      // 🚨 Save exactly to 'userToken'
       await SecureStore.setItemAsync('userToken', token);
       await SecureStore.setItemAsync('userData', JSON.stringify(loggedInUser));
 
-      // Attach token to Axios
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       setUser(loggedInUser);
       return { success: true };
@@ -49,18 +49,19 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const registerUser = async (name, phone, password, role,city) => {
+  // 3. Register Function
+  const registerUser = async (name, phone, password, role, city) => {
     try {
-      await apiClient.post('/auth/register', { name, phone, password, role,city });
-      // Automatically log them in after a successful registration
+      await apiClient.post('/auth/register', { name, phone, password, role, city });
       return await login(phone, password);
     } catch (error) {
       return { success: false, message: error.response?.data?.error || "Registration failed" };
     }
   };
 
-  // 3. Logout Function
+  // 4. Logout Function
   const logout = async () => {
+    // 🚨 Clear exactly 'userToken'
     await SecureStore.deleteItemAsync('userToken');
     await SecureStore.deleteItemAsync('userData');
     apiClient.defaults.headers.common['Authorization'] = '';

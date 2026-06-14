@@ -5,174 +5,155 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import prisma from '../../utils/db.js';
 import { getLiveWeather } from "../../utils/weatherService.js";
-import { getLiveMandiPrices } from "../../utils/mandiService.js"; // 📡 Import your live API service
+import { searchMarketNews } from "./marketKnowledge.js";
 
 const memory = new MemorySaver();
 
 export const handleAIChat = async (req, res) => {
   try {
     const { message, sessionId = 'default' } = req.body;
-    const userId = req.user.userId; // Provided securely by your auth middleware
+    const userId = req.user.userId;
 
     if (!message) {
       return res.status(400).json({ error: "Message is required." });
     }
 
-    // ==========================================
-    // 1. DEFINE SECURE TOOLS
-    // ==========================================
-    
-    // TOOL 1: Check current user's stock
     const checkInventoryTool = tool(
       async () => {
         const inventory = await prisma.inventory.findMany({
           where: { userId: userId, quantity: { gt: 0 } },
           select: { name: true, quantity: true, unit: true, buyPrice: true, expiryDate: true }
         });
-        return JSON.stringify(inventory.length ? inventory : { message: "Inventory is completely empty. No stock available." });
+        return JSON.stringify(inventory.length ? inventory : { message: "Inventory is empty." });
       },
       {
         name: "check_inventory",
-        description: "Fetches the logged-in user's live inventory levels, buying prices, and when items expire.",
-        schema: z.object({}), 
-      }
-    );
-
-    // TOOL 2: Check current user's sales history
-    const checkSalesTool = tool(
-      async () => {
-        const sales = await prisma.shipment.findMany({
-          where: { sellerId: userId, status: "DELIVERED" },
-          select: { quantity: true, transportCost: true, product: { select: { name: true, price: true } } },
-          take: 10,
-          orderBy: { lastUpdated: 'desc' }
-        });
-        return JSON.stringify(sales.length ? sales : { message: "No completed sales found yet." });
-      },
-      {
-        name: "check_recent_sales",
-        description: "Fetches the logged-in user's most recent completed shipments to calculate profit and revenue.",
+        description: "Fetches user's current stock levels and expiry information.",
         schema: z.object({}),
       }
     );
 
-    // TOOL 3: Local Weather
-    const localWeatherTool = tool(
+    const salesAnalyzerTool = tool(
+      async () => {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const recentSales = await prisma.sale.findMany({
+          where: { 
+            inventory: { userId: userId },
+            soldAt: { gte: thirtyDaysAgo }
+          },
+          select: { sellPrice: true, quantity: true, profit: true, inventory: { select: { name: true } } }
+        });
+
+        if (recentSales.length === 0) return "No sales recorded in the last 30 days.";
+
+        let totalRevenue = 0;
+        let totalProfit = 0;
+        let bestSellingItem = {};
+
+        recentSales.forEach(sale => {
+          totalRevenue += (sale.sellPrice * sale.quantity);
+          totalProfit += sale.profit;
+          const itemName = sale.inventory?.name || "Unknown";
+          bestSellingItem[itemName] = (bestSellingItem[itemName] || 0) + sale.quantity;
+        });
+
+        const topItem = Object.keys(bestSellingItem).length 
+          ? Object.keys(bestSellingItem).reduce((a, b) => bestSellingItem[a] > bestSellingItem[b] ? a : b) 
+          : "None";
+
+        return JSON.stringify({
+          totalRevenue: `₹${totalRevenue}`,
+          netProfit: `₹${totalProfit}`,
+          topMovingCommodity: topItem,
+          rawSalesData: recentSales.slice(0, 5)
+        });
+      },
+      {
+        name: "analyze_my_sales",
+        description: "Calculates total revenue, pure profit, and best-selling items over the last 30 days.",
+        schema: z.object({}),
+      }
+    );
+
+    const weatherAnalyzerTool = tool(
+      async () => {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { city: true }
+        });
+        
+        if (!user?.city) return "User location city not set in profile.";
+
+        const weatherData = await getLiveWeather(user.city);
+        return JSON.stringify({ location: user.city, forecast: weatherData || "Unavailable" });
+      },
+      {
+        name: "analyze_weather_only",
+        description: "Fetches meteorology parameters, rain warnings, and climate reports for the local city.",
+        schema: z.object({}),
+      }
+    );
+
+    const predictiveMandiAnalyzerTool = tool(
       async () => {
         const user = await prisma.user.findUnique({
           where: { id: userId },
           select: { city: true }
         });
 
-        if (!user || !user.city) {
-          return JSON.stringify({ error: "User has not configured a city/location in their profile." });
-        }
-        
-        const weatherData = await getLiveWeather(user.city);
-        return JSON.stringify(weatherData ? weatherData : { error: `Failed to fetch live weather data for ${user.city}.` });
+        const weatherData = await getLiveWeather(user?.city || "Delhi");
+        const weatherString = JSON.stringify(weatherData).toLowerCase();
+
+        const marketOpportunities = await prisma.product.findMany({
+          where: { sellerId: { not: userId }, stock: { gt: 0 } },
+          select: { name: true, price: true, unit: true, stock: true, seller: { select: { city: true } } },
+          orderBy: { price: 'asc' },
+          take: 5
+        });
+
+        const newsAlerts = await searchMarketNews("logistics strikes weather damage crop supply demand bans");
+
+        return JSON.stringify({
+          environmentalContext: {
+            location: user?.state || "Unknown",
+            weatherRisks: weatherString.includes("rain") || weatherString.includes("shower") ? "High Spoilage Risk for open-air stock" : "Stable conditions",
+          },
+          newsAndLogisticsContext: newsAlerts,
+          currentMarketOpportunities: marketOpportunities
+        });
       },
       {
-        name: "get_local_weather_forecast",
-        description: "Fetches live weather, humidity, rain chances, and weather alerts for the shopkeeper's configured city.",
+        name: "predict_best_products_to_buy",
+        description: "Correlates weather forecasts, news trends, and market listings to find optimal procurement deals.",
         schema: z.object({}),
       }
     );
 
-    // 🚨 TOOL 4: INTERNAL MARKETPLACE SEARCH (Excludes current user)
-    const searchMarketplaceTool = tool(
-      async ({ commodity }) => {
-        console.log(`🔎 Database scan for B2B listings of: ${commodity} (Excluding User: ${userId})`);
-        
-        const availableListings = await prisma.product.findMany({
-          where: {
-            name: { contains: commodity, mode: 'insensitive' }, // Case-insensitive search
-            sellerId: { not: userId },                          // 🚨 CRITICAL: Excludes current user's own items
-            stock: { gt: 0 }                                     // Only items actively available
-          },
-          select: {
-            id: true,
-            name: true,
-            price: true,
-            unit: true,
-            stock: true,
-            seller: {
-              select: { name: true, city: true, state: true }
-            }
-          },
-          orderBy: { price: 'asc' }, // Best deals first
-          take: 5
-        });
-
-        if (!availableListings.length) {
-          return JSON.stringify({ message: `No other users have listed ${commodity} on the platform right now.` });
-        }
-
-        return JSON.stringify({ alternativePlatformListings: availableListings });
-      },
-      {
-        name: "search_platform_marketplace",
-        description: "Queries the application database for active product listings posted by OTHER wholesalers, farmers, or competitors. Use this when the user wants to buy stock or see what others are charging.",
-        schema: z.object({
-          commodity: z.string().describe("The name of the crop or item to source from other platform users (e.g., 'Wheat', 'Tomato').")
-        })
-      }
-    );
-
-    // 🚨 TOOL 5: EXTERNAL LIVE GOVT MANDI PRICES
-    const liveMandiTool = tool(
-      async ({ commodity }) => {
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { state: true }
-        });
-
-        const userState = user?.state || "Unknown State";
-
-        // 🚨 PASSING userId HERE TO FILTER OUT THEIR OWN ENTRIES IN THE CALCULATIONS
-        console.log(`📡 Calculating dynamic benchmarks for ${commodity} on behalf of User ${userId}`);
-        const marketRates = await getLiveMandiPrices(userState, commodity, userId);
-        
-        return JSON.stringify({ externalMandiContext: marketRates });
-      },
-      {
-        name: "check_live_mandi_prices",
-        description: "Aggregates marketplace data across all other registered sellers to compute the min, max, and modal pricing benchmarks for any given crop.",
-        schema: z.object({
-          commodity: z.string().describe("The name of the agricultural commodity or product to run metrics on (e.g., 'Wheat', 'Garlic').")
-        })
-      }
-    );
-
-    // ==========================================
-    // 2. INITIALIZE THE BRAIN WITH ALL TOOLS
-    // ==========================================
-    
     const llm = new ChatGoogleGenerativeAI({
       model: "gemini-2.5-flash",
       apiKey: process.env.GEMINI_API_KEY,
-      temperature: 0.1, 
+      temperature: 0.1,
     });
 
-    const systemPrompt = `You are MandiBrain, an elite AI CFO and B2B Broker built directly into the DukaanSetu marketplace application. Your job is to maximize user profitability, flag logistics opportunities, and source trading deals.
+    const systemPrompt = `You are MandiBrain, an expert B2B agriculture market agent.
+    
+    ROUTING CRITERIA:
+    1. Financial health, sales queries, revenue or profit checks -> Call 'analyze_my_sales'.
+    2. Weather conditions, rain forecasts -> Call 'analyze_weather_only'.
+    3. Buy recommendations, optimization vectors, or inventory forecasting -> Call 'predict_best_products_to_buy'.
+    4. Personal current stock volumes -> Call 'check_inventory'.
 
-    CORE RUNTIME INSTRUCTIONS:
-    1. For buying enquiries or sourcing requests, ALWAYS prioritize 'search_platform_marketplace' first. This allows you to find active matching listings from OTHER users running on our platform.
-    2. If a user asks for baseline market trends or generalized market valuations, check external baselines via 'check_live_mandi_prices'.
-    3. To understand what the current user physically owns or paid, rely strictly on 'check_inventory'.
-    4. Actively spot arbitrage windows. If someone can buy an item from another seller on our platform for less than the official government Mandi valuation, guide them to that deal.
-    5. Keep all communications professional, brief, and highly direct. All financial values use INR (₹).`;
+    Formulate highly quantitative responses using Indian Rupees (₹). Correlate weather alerts with specific shelf-life metrics when advising purchases.`;
 
     const agent = createReactAgent({
       llm,
-      tools: [checkInventoryTool, checkSalesTool, localWeatherTool, searchMarketplaceTool, liveMandiTool], 
+      tools: [checkInventoryTool, salesAnalyzerTool, weatherAnalyzerTool, predictiveMandiAnalyzerTool],
       checkpointSaver: memory,
       stateModifier: systemPrompt,
     });
 
-    // ==========================================
-    // 3. EXECUTION
-    // ==========================================
-  
     const activeThread = `${userId}=${sessionId}`;
     const config = { configurable: { thread_id: activeThread } };
 
@@ -183,13 +164,13 @@ export const handleAIChat = async (req, res) => {
 
     const finalAiMessage = result.messages[result.messages.length - 1].content;
 
-    res.status(200).json({ 
-      status: "success", 
-      reply: finalAiMessage 
+    return res.status(200).json({
+      status: "success",
+      reply: finalAiMessage
     });
 
   } catch (error) {
     console.error("LangGraph Agent Error:", error);
-    res.status(500).json({ error: "Failed to communicate with your AI Business Partner." });
+    return res.status(500).json({ error: "Internal agent communication failure." });
   }
 };

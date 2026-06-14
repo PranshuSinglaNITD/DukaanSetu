@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import { Server } from 'socket.io';
 import { createServer } from 'http';
 import path from 'path';
+import rateLimit from 'express-rate-limit'
+import helmet from 'helmet'
 
 // Import Route Modules
 import authRoutes from './modules/auth/auth.routes.js';
@@ -19,10 +21,12 @@ import notificationRoutes from './modules/notifications/notifications.routes.js'
 import logisticsRoutes from './modules/logistics/logistics.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
 import shipmentRoutes from './modules/shipments/shipments.routes.js';
+import khataRoutes from './modules/khata/khata.routes.js'
 
 dotenv.config();
 
 const app = express();
+app.use(helmet()) //Helmet automatically sets various HTTP headers to protect against well-known web vulnerabilities (like XSS, clickjacking, etc.)
 const PORT = process.env.PORT || 3000;
 const httpServer=createServer(app)
 
@@ -62,6 +66,21 @@ io.on('connection', (socket) => {
   });
 });
 
+const limiter=rateLimit({
+  windowMs:15*60*1000,  //this means 15 minutes
+  max:100,
+  message:{status:'error',error:'too many request from this IP'},
+  standardHeaders:true,
+  legacyHeaders:true
+})
+app.use(limiter);
+
+//specially for login
+const loginLimiter=rateLimit({
+  windowMs:60*60*1000,
+  max:5,
+  message:{status:'error',error:'too many login attempts from this IP'}
+})
 // Global Middlewares
 app.use(cors());
 //as images are of large size
@@ -70,6 +89,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/uploads',express.static(path.join(process.cwd(),'uploads')));
 
 // API Base Routes Mounting
+app.use('/api/auth/login',loginLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/properties', propertyRoutes);
@@ -83,6 +103,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/logistics', logisticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/shipments', shipmentRoutes);
+app.use('/api/khata',khataRoutes);
 
 app.use((req, res, next) => {
   console.log(`404 ERROR: Frontend tried to hit -> ${req.method} ${req.originalUrl}`);
@@ -94,19 +115,19 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'success', message: 'B2B API is running!' });
 });
 app.use((req, res, next) => {
-  console.log(`🚨 404 ERROR: Frontend tried to hit -> ${req.method} ${req.originalUrl}`);
+  console.log(`404 ERROR: Frontend tried to hit -> ${req.method} ${req.originalUrl}`);
   res.status(404).json({ error: "Route not found" });
 });
 
 // Start Server
 app.listen(PORT, () => {
-  console.log(`🚀 Server is running on http://localhost:${PORT}`);
+  console.log(`Server is running on http://localhost:${PORT}`);
 });
 app.use((req, res, next) => {
-  console.log(`🚨 404 ERROR: Frontend tried to hit -> ${req.method} ${req.originalUrl}`);
+  console.log(`404 ERROR: Frontend tried to hit -> ${req.method} ${req.originalUrl}`);
   res.status(404).json({ error: "Route not found" });
 });
 
 httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server & Live Tracking running on port ${PORT}`);
+  console.log(`Server & Live Tracking running on port ${PORT}`);
 });

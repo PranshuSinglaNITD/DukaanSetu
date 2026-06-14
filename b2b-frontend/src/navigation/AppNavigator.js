@@ -21,6 +21,9 @@ import SellerSalesScreen from '@/screens/SellerSalesScreen';
 import BuyerOrdersScreen from '@/screens/BuyerOrdersScreen';
 import ChatScreen from '@/screens/AIChatScreen';
 import AnalyticsScreen from '@/screens/AnalyticsScreen';
+import LedgerPreviewScreen from '@/screens/LedgerPreviewScreen';
+import KhataScreen from '@/screens/KhataScreen';
+import VoiceAssistantScreen from '@/screens/VoiceChatScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -60,6 +63,9 @@ const AppNavigator = () => {
             <Stack.Screen name="BuyerOrders" component={BuyerOrdersScreen} />
             <Stack.Screen name="Chat" component={ChatScreen}/>
             <Stack.Screen name="Analytics" component={AnalyticsScreen}/>
+            <Stack.Screen name="Ledger" component={LedgerPreviewScreen}/>
+            <Stack.Screen name="Khata" component={KhataScreen}/>
+            <Stack.Screen name="Voice" component={VoiceAssistantScreen}/>
           </>
         ) : (
           <>

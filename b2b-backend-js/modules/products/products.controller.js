@@ -202,10 +202,10 @@ export const comparePrices = async (req, res) => {
 // 5. PURCHASE PRODUCT
 export const purchaseProduct = async (req, res) => {
   try {
-    const { productId, quantity, negotiationId } = req.body;
+    // 🚨 NEW: Added amountPaid and paymentMethod
+    const { productId, quantity, negotiationId, amountPaid, paymentMethod,sellerId } = req.body;
     const buyerId = req.user.userId; 
     
-    // 1. Ensure buyQty is a valid number
     const buyQty = parseInt(quantity, 10);
     if (isNaN(buyQty) || buyQty <= 0) {
       return res.status(400).json({ error: "Invalid purchase quantity provided." });
@@ -215,17 +215,13 @@ export const purchaseProduct = async (req, res) => {
 
     if (!product) return res.status(404).json({ error: "Product not found" });
     if (product.sellerId === buyerId) return res.status(400).json({ error: "You cannot buy your own product" });
-    
-    // Ensure stock exists
     if (product.stock === undefined || product.stock === null) {
         return res.status(500).json({ error: "Product database record is missing stock data." });
     }
-
     if (product.stock < buyQty) return res.status(400).json({ error: "Insufficient stock available" });
 
     let finalUnitPrice = product.price;
 
-    // 2. Handle Negotiated Discount
     if (negotiationId) {
       const negotiation = await prisma.negotiation.findUnique({
         where: { id: negotiationId },
@@ -244,16 +240,23 @@ export const purchaseProduct = async (req, res) => {
     }
 
     const newStockLevel = product.stock - buyQty;
+    const totalCost = finalUnitPrice * buyQty;
 
-    // 3. The Database Transaction
+    // 🚨 KHATA MATH LOGIC
+    // If amountPaid is not provided, we assume they paid in full (cash on delivery / instant transfer)
+    const paid = amountPaid !== undefined ? parseFloat(amountPaid) : totalCost;
+    const due = totalCost - paid;
+    
+    let pStatus = 'PAID';
+    if (due > 0 && paid > 0) pStatus = 'PARTIAL';
+    if (paid === 0) pStatus = 'UNPAID';
+
     const result = await prisma.$transaction([
       prisma.product.update({
         where: { id: productId },
-        data: { 
-          stock: newStockLevel, 
-          isAvailable: newStockLevel > 0
-        }
+        data: { stock: { decrement: buyQty }, isAvailable: newStockLevel > 0 }
       }),
+
       prisma.inventory.create({
         data: {
           userId: buyerId,
@@ -262,9 +265,34 @@ export const purchaseProduct = async (req, res) => {
           buyPrice: finalUnitPrice, 
           quantity: buyQty,       
           unit: product.unit || 'KG',
-          expiryDate: product.expiryDate // 🚨 FIX 2: AI CFO relies on this!
+          expiryDate: product.expiryDate 
         }
       }),
+
+      prisma.purchase.create({
+        data: {
+          userId: buyerId,
+          name: product.name,
+          sellerId:product.sellerId,
+          unit: product.unit || 'KG',
+          buyPrice: finalUnitPrice,
+          quantity: buyQty,
+          total: totalCost,
+          paymentStatus: pStatus,
+          amountPaid: paid,
+          amountDue: due,
+          // Only create a Payment record if money actually changed hands
+          payments: paid > 0 ? {
+            create: {
+              amount: paid,
+              method: paymentMethod || "PLATFORM",
+              buyerId: buyerId,
+              sellerId: product.sellerId
+            }
+          } : undefined
+        }
+      }),
+
       prisma.shipment.create({
         data: {
           productId: productId,
@@ -278,12 +306,7 @@ export const purchaseProduct = async (req, res) => {
       })
     ]);
 
-    const intelligenceSentence = `SALE CONFIRMED: A transaction just closed for ${buyQty} ${product.unit} of ${product.name}. The final negotiated clearing price was ₹${finalUnitPrice}/${product.unit}. This is the current actual market value.`;
-    
-    ingestNewMarketData(intelligenceSentence, { source: "internal_sale", crop: product.name })
-      .catch(err => console.error("AI Ingestion skipped:", err));
-
-    res.status(201).json({ status: 'success', message: 'Purchase finalized', data: result[1] });
+    res.status(201).json({ status: 'success', message: 'Purchase finalized and recorded in Ledger', data: result[2] });
   } catch (error) {
     console.error("Purchase Error:", error);
     res.status(500).json({ error: 'Failed to process purchase transaction' });

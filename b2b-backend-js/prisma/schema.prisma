@@ -1,4 +1,3 @@
-//this is basically SQL
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,194 +6,226 @@ datasource db {
   provider = "postgresql"
 }
 
+// ─── ENUMS ─────────────────────────────────────────────────────────────
+enum PaymentStatus {
+  PAID
+  PARTIAL
+  UNPAID
+}
+
+// ─── MODELS ────────────────────────────────────────────────────────────
+
 model User {
-  id           String   @id @default(uuid())
-  name         String
-  phone        String   @unique
-  password     String
-  role         String   @default("RETAILER")
-  city String 
+  id                String          @id @default(uuid())
+  name              String
+  phone             String          @unique
+  password          String
+  role              String          @default("RETAILER")
+  city              String 
   
-  profilePic   String?  
-  businessName String?  
-  businessType String?  
-  address      String?  
-  pushToken    String?  // 🚨 ADDED: For AI Expiry Push Notifications
+  profilePic        String?  
+  businessName      String?  
+  businessType      String?  
+  address           String?  
+  pushToken         String?  
   
-  properties         Property[] @relation("UserProperties") 
-  favoriteProperties Property[] @relation("UserFavorites") 
-  products           Product[]  @relation("UserProducts")
-  buyerNegotiations  Negotiation[] @relation("BuyerNegotiations")
-  sellerNegotiations Negotiation[] @relation("SellerNegotiations")
-  offersSent         Offer[]       @relation("UserOffers")
-  buyerShipments     Shipment[] @relation("BuyerShipments")
-  sellerShipments    Shipment[] @relation("SellerShipments")
+  properties        Property[]      @relation("UserProperties") 
+  favoriteProperties Property[]     @relation("UserFavorites") 
+  products          Product[]       @relation("UserProducts")
+  buyerNegotiations Negotiation[]   @relation("BuyerNegotiations")
+  sellerNegotiations Negotiation[]  @relation("SellerNegotiations")
+  offersSent        Offer[]         @relation("UserOffers")
+  buyerShipments    Shipment[]      @relation("BuyerShipments")
+  sellerShipments   Shipment[]      @relation("SellerShipments")
   
-  inventories        Inventory[]
-  notifications Notification[]
-  
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  inventories       Inventory[]
+  notifications     Notification[]
+  purchases         Purchase[] @relation("BuyerPurchases")
+  sellerPurchases   Purchase[] @relation("SellerPurchases")
+  // 🚨 NEW: Payment Links for Khata System
+  paymentsMade      Payment[]       @relation("PaymentsMade")
+  paymentsReceived  Payment[]       @relation("PaymentsReceived")
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 }
 
 model Property {
   id           String   @id @default(uuid())
   ownerId      String
   owner        User     @relation("UserProperties", fields: [ownerId], references: [id])
-  
   title        String
   description  String?
   propertyType String   
   listingType  String   
-  
   price        Float    
   deposit      Float?   
   areaSqFt     Float
-  
   address      String
   city         String
   state        String
-  
   images       String[] 
   status       String   @default("AVAILABLE")
-  
   favoritedBy  User[]   @relation("UserFavorites")
-  
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
 
 model Product {
-  id          String   @id @default(uuid())
-  sellerId    String
-  seller      User     @relation("UserProducts", fields: [sellerId], references: [id])
-  
-  name        String
-  description String?
-  category    String   // e.g., "GRAINS", "VEGETABLES", "FMCG"
-  mandiName   String?  // Optional: Specific Mandi if applicable (e.g., "Azadpur Mandi")
-  
-  price       Float    // Current price
-  unit        String   @default("KG") // e.g., "KG", "QUINTAL", "BOX"
-  stock       Float    // Available quantity
-  
-  images      String[] 
-  isAvailable Boolean  @default(true)
+  id           String        @id @default(uuid())
+  sellerId     String
+  seller       User          @relation("UserProducts", fields: [sellerId], references: [id])
+  name         String
+  description  String?
+  category     String 
+  mandiName    String?
+  price        Float 
+  unit         String        @default("KG") 
+  stock        Float 
+  images       String[] 
+  isAvailable  Boolean       @default(true)
   negotiations Negotiation[]
-  expiryDate  DateTime // 🚨 The AI calculated date
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  shipment    Shipment[]
+  expiryDate   DateTime 
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  shipment     Shipment[]
 }
 
 model Negotiation {
   id        String   @id @default(uuid())
   buyerId   String
   sellerId  String
-  productId String?  // Optional: Links the negotiation to a specific product
-  
-  status    String   @default("ACTIVE") // "ACTIVE", "ACCEPTED", "REJECTED"
-  
+  productId String? 
+  status    String   @default("ACTIVE") 
   buyer     User     @relation("BuyerNegotiations", fields: [buyerId], references: [id])
   seller    User     @relation("SellerNegotiations", fields: [sellerId], references: [id])
   product   Product? @relation(fields: [productId], references: [id])
-  
-  offers    Offer[]  // The back-and-forth messages/prices
-
+  offers    Offer[]  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
   shipments Shipment?
 }
 
 model Offer {
-  id            String   @id @default(uuid())
+  id            String      @id @default(uuid())
   negotiationId String
   senderId      String
-  
   price         Float
   message       String?
-  status        String   @default("PENDING") // "PENDING", "ACCEPTED", "REJECTED"
-  
+  status        String      @default("PENDING")
   negotiation   Negotiation @relation(fields: [negotiationId], references: [id])
   sender        User        @relation("UserOffers", fields: [senderId], references: [id])
-  
-  createdAt     DateTime @default(now())
+  createdAt     DateTime    @default(now())
 }
 
 model Inventory {
-  id          String   @id @default(uuid())
-  userId      String   // The shopkeeper who bought the item
-  user        User     @relation(fields: [userId], references: [id]) // 🚨 FIXED: Prisma requires this relation link!
-  
-  name        String   // Name of the product
-  category    String
-  buyPrice    Float    // The price they bought it for from the Mandi
-  quantity    Int      // Current stock they have available to sell
-  unit        String  
-  expiryDate  DateTime? 
-  
-  sales       Sale[]   // Relation to keep track of every time they sell a portion of this stock
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(uuid())
+  userId     String   
+  user       User     @relation(fields: [userId], references: [id]) 
+  name       String   
+  category   String
+  buyPrice   Float    
+  quantity   Int      
+  unit       String  
+  expiryDate DateTime? 
+  sales      Sale[]   
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 } 
 
 model Sale {
-  id          String   @id @default(uuid())
-  inventoryId String
-  inventory   Inventory @relation(fields: [inventoryId], references: [id])
+  id            String        @id @default(uuid())
+  inventoryId   String
+  inventory     Inventory     @relation(fields: [inventoryId], references: [id])
+  sellPrice     Float    
+  quantity      Int      
+  profit        Float    
   
-  sellPrice   Float    // The price they sold it to the customer for
-  quantity    Int      // How much they sold
-  profit      Float    // Auto-calculated: (sellPrice - buyPrice) * quantity
-  
-  soldAt      DateTime @default(now())
+  // 🚨 NEW: Khata Credit System Fields
+  buyerName     String?       // Fallback for offline cash customers
+  buyerPhone    String?
+  paymentStatus PaymentStatus @default(PAID)
+  amountPaid    Float         @default(0)
+  amountDue     Float         @default(0)
+  payments      Payment[]
+
+  soldAt        DateTime      @default(now())
 }
 
 model Shipment {
-  id              String   @id @default(uuid())
-  
-  // Link to what is being shipped
-  productId       String
-  product         Product  @relation(fields: [productId], references: [id])
-  quantity        Float    // How much of the product is in the truck
-  
-  // Optional link to the negotiation if this was a custom deal
-  negotiationId   String?  @unique
-  negotiation     Negotiation? @relation(fields: [negotiationId], references: [id])
-  
-  // Direct references for lightning-fast queries
-  buyerId         String
-  sellerId        String
-  buyer           User     @relation("BuyerShipments", fields: [buyerId], references: [id])
-  seller          User     @relation("SellerShipments", fields: [sellerId], references: [id])
-  
-  // Transport Details
-  driverName      String?
-  driverPhone     String?  
-  vehicleNumber   String?
-  transportCost   Float    @default(0) // Rent paid by the buyer
-  
-  // State Machine
-  status          String   @default("PENDING") // "PENDING", "IN_TRANSIT", "DELIVERED"
-  
-  // Live Tracking Data
-  currentLat      Float?
-  currentLng      Float?
-  lastUpdated     DateTime @default(now())
+  id            String       @id @default(uuid())
+  productId     String
+  product       Product      @relation(fields: [productId], references: [id])
+  quantity      Float    
+  negotiationId String?      @unique
+  negotiation   Negotiation? @relation(fields: [negotiationId], references: [id])
+  buyerId       String
+  sellerId      String
+  buyer         User         @relation("BuyerShipments", fields: [buyerId], references: [id])
+  seller        User         @relation("SellerShipments", fields: [sellerId], references: [id])
+  driverName    String?
+  driverPhone   String?  
+  vehicleNumber String?
+  transportCost Float        @default(0) 
+  status        String       @default("PENDING") 
+  currentLat    Float?
+  currentLng    Float?
+  lastUpdated   DateTime     @default(now())
 }
 
 model Notification {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
-  
   title     String
   message   String
-  type      String   @default("INFO") // e.g., "DEAL", "NEGOTIATION", "WEATHER", "WARNING"
+  type      String   @default("INFO") 
   isRead    Boolean  @default(false)
-  
   createdAt DateTime @default(now())
+}
+
+model Purchase {
+  id            String        @id @default(uuid())
+  
+  // 1. The Buyer (You)
+  userId        String
+  user          User          @relation("BuyerPurchases", fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 2. The Seller (Supplier)
+  sellerId      String?
+  seller        User?         @relation("SellerPurchases", fields: [sellerId], references: [id])
+
+  name          String
+  quantity      Int
+  unit          String
+  buyPrice      Float
+  total         Float
+
+  paymentStatus PaymentStatus @default(PAID)
+  amountPaid    Float         @default(0)
+  amountDue     Float         @default(0)
+  payments      Payment[]
+
+  createdAt     DateTime      @default(now())
+}
+model Payment {
+  id          String    @id @default(uuid())
+  amount      Float
+  method      String    // e.g., "CASH", "UPI", "BANK_TRANSFER", "PLATFORM_CREDIT"
+  date        DateTime  @default(now())
+
+  // 1. THE PERSON GIVING THE MONEY
+  buyerId     String
+  buyer       User      @relation("PaymentsMade", fields: [buyerId], references: [id])
+
+  // 2. THE PERSON RECEIVING THE MONEY
+  sellerId    String
+  seller      User      @relation("PaymentsReceived", fields: [sellerId], references: [id])
+
+  // 3. TRANSACTION LINKS (To know what they are paying for)
+  purchaseId  String?
+  purchase    Purchase? @relation(fields: [purchaseId], references: [id])
+  
+  saleId      String?
+  sale        Sale?     @relation(fields: [saleId], references: [id])
 }

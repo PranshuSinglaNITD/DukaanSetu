@@ -50,7 +50,9 @@ const MENU: MenuSection[] = [
       { label: 'Add Product',   route: 'AddProduct',  icon: 'basket-plus-outline', lib: 'mci', accent: true },
       { label: 'List Property', route: 'AddProperty', icon: 'home-plus-outline',   lib: 'mci', accent: true },
       { label: 'My Inventory',  route: 'Inventory',   icon: 'clipboard-list-outline', lib: 'mci', badge: 3 },
+      { label: 'My KhataBook',  route: 'Khata',   icon: 'clipboard-list-outline', lib: 'mci', badge: 3 },
     ],
+
   },
   {
     title: 'ORDERS & SALES',
@@ -58,13 +60,13 @@ const MENU: MenuSection[] = [
       { label: 'Pending Orders',      route: 'Orders',       icon: 'package-variant-closed', lib: 'mci', badge: 2 },
       { label: 'My Sales & Dispatch', route: 'SellerSales',  icon: 'truck-delivery-outline',  lib: 'mci' },
       { label: 'Track Purchases',     route: 'BuyerOrders',  icon: 'map-marker-path',         lib: 'mci' },
+      {label:'Automatic Ledgers', route:'Ledger', icon:'',lib:'mci'},
     ],
   },
   {
     title: 'ACCOUNT',
     items: [
       { label: 'Negotiations Inbox', route: 'Negotiations', icon: 'message-text-outline', lib: 'mci', badge: 5 },
-      {label:'Analytics',route:'Analytics',icon:'bar-chart',lib:'mci'},
       { label: 'Favourites',         route: 'Favourites',   icon: 'heart-outline',         lib: 'mci' },
       { label: 'Settings',           route: 'Settings',     icon: 'cog-outline',           lib: 'mci' },
     ],

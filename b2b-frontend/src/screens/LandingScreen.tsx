@@ -323,7 +323,7 @@ export default function LandingScreen({ navigation }: any) {
               <View style={styles.heroTop}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.greeting}>{getGreeting()},</Text>
-                  <Text style={styles.heroName}>{user?.name ?? 'Shopkeeper'} 👋</Text>
+                  <Text style={styles.heroName}>{user?.name ?? 'Shopkeeper'}</Text>
 
                   {/* Badges */}
                   <View style={styles.heroMeta}>
@@ -332,8 +332,6 @@ export default function LandingScreen({ navigation }: any) {
                       <Text style={styles.verifiedText}>{user?.role ?? 'Verified Seller'}</Text>
                     </View>
                     <View style={styles.activePill}>
-                      <View style={styles.activeDot} />
-                      <Text style={styles.activeText}>Active</Text>
                     </View>
                   </View>
                 </View>

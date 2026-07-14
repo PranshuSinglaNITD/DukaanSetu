@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   SafeAreaView, ActivityIndicator, Alert, Modal, TextInput
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 
 export default function KhataScreen() {
@@ -18,7 +18,7 @@ export default function KhataScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 🚨 Update with your actual computer's IP address
-  const BACKEND_URL = 'http://192.168.1.8:3000/api/khata';
+  const BACKEND_URL = 'http://192.168.1.2:3000/api/khata';
 
   const loadKhata = async () => {
     setIsLoading(true);
@@ -58,12 +58,14 @@ export default function KhataScreen() {
     setIsSubmitting(true);
     try {
       const token = await SecureStore.getItemAsync('userToken');
+      
+      // 🚨 UPDATED PAYLOAD: Dynamically pulling the type and seller ID from the item!
       const payload = {
         transactionId: activeTransaction.id,
-        type: activeTab === 'GET' ? 'SALE' : 'PURCHASE',
+        type: activeTransaction.type, // 'OFFLINE_SALE' or 'B2B_TRANSACTION'
         paymentAmount: parseFloat(paymentAmount),
-        method: 'CASH', // You can add a picker for UPI/Cash later
-        targetSellerId: activeTab === 'GIVE' ? activeTransaction.sellerId : undefined
+        method: 'CASH', 
+        targetSellerId: activeTransaction.targetSellerId || undefined
       };
 
       const response = await fetch(`${BACKEND_URL}/installment`, {
@@ -93,8 +95,11 @@ export default function KhataScreen() {
 
   const renderTransaction = ({ item }: any) => {
     const isDebtor = activeTab === 'GET';
-    const name = isDebtor ? (item.buyerName || 'Walk-in Customer') : item.name;
-    const date = new Date(isDebtor ? item.soldAt : item.createdAt).toLocaleDateString('en-IN');
+    
+    // 🚨 MASSIVELY SIMPLIFIED: The backend already normalized this for us!
+    const name = item.name;
+    const date = new Date(item.date).toLocaleDateString('en-IN');
+    const isB2B = item.type === 'B2B_TRANSACTION';
 
     return (
       <View style={styles.row}>
@@ -123,101 +128,163 @@ export default function KhataScreen() {
   if (isLoading) return <View style={styles.center}><ActivityIndicator size="large" color="#1E3A8A" /></View>;
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Digital Khata</Text>
-      </View>
+  <SafeAreaView style={styles.container}>
+    <View style={styles.header}>
+      <Text style={styles.headerTitle}>Digital KhataBook</Text>
+      <Text style={styles.headerTitle}>Manage your receivables and payables</Text>
+    </View>
 
-      {/* Red/Green Dashboard */}
-      <View style={styles.dashboard}>
-        <View style={[styles.card, styles.cardGreen]}>
-          <Text style={styles.cardLabel}>You Will Get (₹)</Text>
-          <Text style={styles.cardAmountGreen}>{summary.toReceive.toLocaleString('en-IN')}</Text>
+    {/* ─── Financial Dashboard ─── */}
+    <View style={styles.dashboard}>
+      <View style={[styles.card, styles.cardGreen]}>
+        <View style={styles.cardHeader}>
+          <MaterialCommunityIcons name="arrow-bottom-left-thick" size={18} color="#059669" />
+          <Text style={styles.cardLabel}>To Receive (₹)</Text>
         </View>
-        <View style={[styles.card, styles.cardRed]}>
-          <Text style={styles.cardLabel}>You Will Give (₹)</Text>
-          <Text style={styles.cardAmountRed}>{summary.toPay.toLocaleString('en-IN')}</Text>
-        </View>
+        <Text style={styles.cardAmountGreen}>
+          {summary?.toReceive ? summary.toReceive.toLocaleString('en-IN') : '0'}
+        </Text>
       </View>
+      
+      <View style={[styles.card, styles.cardRed]}>
+        <View style={styles.cardHeader}>
+          <MaterialCommunityIcons name="arrow-top-right-thick" size={18} color="#dc2626" />
+          <Text style={styles.cardLabel}>To Pay (₹)</Text>
+        </View>
+        <Text style={styles.cardAmountRed}>
+          {summary?.toPay ? summary.toPay.toLocaleString('en-IN') : '0'}
+        </Text>
+      </View>
+    </View>
 
-      {/* Toggle Tabs */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={{ backgroundColor: '#8e44ad', padding: 15, borderRadius: 10, margin: 20 }}
-          onPress={() => navigation.navigate('Voice')}
-        >
-          <Text style={{ color: '#fff', textAlign: 'center', fontWeight: 'bold' }}>
-            🎙️ Open MandiBrain Voice Assistant
+    {/* ─── Toggle Tabs ─── */}
+    <View style={styles.tabContainer}>
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'GET' && styles.activeTabGet]}
+        onPress={() => setActiveTab('GET')}
+      >
+        <Text style={[styles.tabText, activeTab === 'GET' && styles.activeTabTextGet]}>
+          Receivables (Get)
+        </Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'GIVE' && styles.activeTabGive]}
+        onPress={() => setActiveTab('GIVE')}
+      >
+        <Text style={[styles.tabText, activeTab === 'GIVE' && styles.activeTabTextGive]}>
+          Payables (Give)
+        </Text>
+      </TouchableOpacity>
+    </View>
+
+    {/* ─── Transaction List ─── */}
+    <FlatList
+      data={activeTab === 'GET' ? summary?.debtors : summary?.creditors}
+      keyExtractor={(item) => item.id.toString()}
+      renderItem={renderTransaction}
+      contentContainerStyle={styles.listPadding}
+      showsVerticalScrollIndicator={false}
+      ListEmptyComponent={
+        <View style={styles.emptyContainer}>
+          <MaterialCommunityIcons name="check-circle-outline" size={48} color="#cbd5e1" />
+          <Text style={styles.emptyText}>
+            No pending {activeTab === 'GET' ? 'receivables' : 'payables'}. You are all settled up!
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'GET' && styles.activeTabGet]}
-          onPress={() => setActiveTab('GET')}
-        >
-          <Text style={[styles.tabText, activeTab === 'GET' && styles.activeTabTextGet]}>Customers (To Get)</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'GIVE' && styles.activeTabGive]}
-          onPress={() => setActiveTab('GIVE')}
-        >
-          <Text style={[styles.tabText, activeTab === 'GIVE' && styles.activeTabTextGive]}>Suppliers (To Pay)</Text>
-        </TouchableOpacity>
-      </View>
+        </View>
+      }
+    />
 
-      {/* List */}
-      <FlatList
-        data={activeTab === 'GET' ? summary.debtors : summary.creditors}
-        keyExtractor={(item) => item.id}
-        renderItem={renderTransaction}
-        contentContainerStyle={styles.listPadding}
-        ListEmptyComponent={<Text style={styles.emptyText}>No pending dues.</Text>}
-      />
-
-      {/* Payment Entry Modal */}
-      <Modal visible={modalVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {activeTab === 'GET' ? 'Record Cash Received' : 'Record Payment Sent'}
-              </Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#64748B" />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.modalSubtitle}>
-              Total Due: ₹{activeTransaction?.amountDue.toLocaleString('en-IN')}
+    {/* ─── Payment Entry Modal ─── */}
+    <Modal visible={modalVisible} animationType="fade" transparent={true}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>
+              {activeTab === 'GET' ? 'Record Collection' : 'Record Payment'}
             </Text>
-
-            <Text style={styles.inputLabel}>Amount (₹)</Text>
-            <TextInput
-              style={styles.modalInput}
-              keyboardType="numeric"
-              value={paymentAmount}
-              onChangeText={setPaymentAmount}
-              autoFocus
-            />
-
-            <TouchableOpacity
-              style={[styles.submitBtn, activeTab === 'GET' ? styles.bgGreen : styles.bgRed]}
-              onPress={submitInstallment}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <Text style={styles.submitBtnText}>Confirm Record</Text>
-              )}
+            <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <Ionicons name="close-circle" size={28} color="#94a3b8" />
             </TouchableOpacity>
           </View>
+
+          <View style={styles.dueContainer}>
+            <Text style={styles.dueLabel}>Total Pending</Text>
+            <Text style={styles.dueAmount}>
+              ₹{activeTransaction?.amountDue ? activeTransaction.amountDue.toLocaleString('en-IN') : '0'}
+            </Text>
+          </View>
+
+          <Text style={styles.inputLabel}>Enter Amount (₹)</Text>
+          <TextInput
+            style={styles.modalInput}
+            keyboardType="numeric"
+            value={paymentAmount}
+            onChangeText={setPaymentAmount}
+            placeholder="0.00"
+            placeholderTextColor="#94a3b8"
+            autoFocus
+          />
+
+          <TouchableOpacity
+            style={[styles.submitBtn, activeTab === 'GET' ? styles.bgGreen : styles.bgRed]}
+            onPress={submitInstallment}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.submitBtnText}>
+                {activeTab === 'GET' ? 'Confirm Receipt' : 'Confirm Payment'}
+              </Text>
+            )}
+          </TouchableOpacity>
+
         </View>
-      </Modal>
-    </SafeAreaView>
-  );
+      </View>
+    </Modal>
+  </SafeAreaView>
+);
 }
 
 const styles = StyleSheet.create({
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  dueContainer: {
+    backgroundColor: '#f1f5f9',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  dueLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  dueAmount: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginTop: 4,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 60,
+  },
+  emptyText: {
+    marginTop: 12,
+    color: '#94a3b8',
+    fontSize: 14,
+    fontWeight: '500',
+  },
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#E2E8F0' },
@@ -244,14 +311,12 @@ const styles = StyleSheet.create({
   name: { fontSize: 16, fontWeight: '700', color: '#1E293B' },
   date: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
   actionBlock: { alignItems: 'flex-end' },
-  dueAmount: { fontSize: 16, fontWeight: 'bold', marginBottom: 6 },
   textGreen: { color: '#16A34A' },
   textRed: { color: '#DC2626' },
   payBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 6 },
   bgGreen: { backgroundColor: '#16A34A' },
   bgRed: { backgroundColor: '#DC2626' },
   payBtnText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
-  emptyText: { textAlign: 'center', marginTop: 40, color: '#94A3B8' },
 
   // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
@@ -262,5 +327,5 @@ const styles = StyleSheet.create({
   inputLabel: { fontSize: 13, fontWeight: '600', color: '#475569', marginBottom: 8 },
   modalInput: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 16, fontSize: 18, fontWeight: 'bold', color: '#1E293B', marginBottom: 24 },
   submitBtn: { paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
-  submitBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' }
+  submitBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
 });

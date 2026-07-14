@@ -23,7 +23,8 @@ import ChatScreen from '@/screens/AIChatScreen';
 import AnalyticsScreen from '@/screens/AnalyticsScreen';
 import LedgerPreviewScreen from '@/screens/LedgerPreviewScreen';
 import KhataScreen from '@/screens/KhataScreen';
-import VoiceAssistantScreen from '@/screens/VoiceChatScreen';
+import QualityCheckScreen from '@/screens/QualityCheckScreen';
+import MandiPulseScreen from '@/screens/MandiPulseScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -33,41 +34,74 @@ const AppNavigator = () => {
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#0000ff" />
+        <ActivityIndicator size="large" color="#f97316" />
       </View>
     );
   }
+
+  const role = user?.role || 'FARMER';
+  
+  const isFarmer = role === 'FARMER';
+  const isWholesaler = role === 'WHOLESALER';
+  const isRetailer = role === 'RETAILER';
 
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
-          /* USER IS LOGGED IN: Show Marketplace Stack */
           <>
+            {/* ========================================== */}
+            {/* 1. UNIVERSAL SCREENS (Everyone sees these) */}
+            {/* ========================================== */}
             <Stack.Screen name="Landing" component={LandingScreen} />
             <Stack.Screen name="Marketplace" component={HomeScreen} />
-            <Stack.Screen name="AddProduct" component={AddProductScreen} />
-            <Stack.Screen name="AddProperty" component={AddPropertyScreen} />
-            <Stack.Screen name="Inventory" component={InventoryScreen} />
-            <Stack.Screen
-              name="InventoryDetail"
-              component={InventoryDetailScreen}
-              options={{ presentation: 'modal', headerShown: false }}
-            />
-            <Stack.Screen name="ProductDetail" component={ProductDetailScreen}></Stack.Screen>
             <Stack.Screen name="Negotiations" component={NegotiationsScreen} />
             <Stack.Screen name="NegotiationDetail" component={NegotiationDetailScreen} />
-            <Stack.Screen name="DispatchSetup" component={DispatchSetupScreen} />
-            <Stack.Screen name="LiveTracking" component={LiveTrackingScreen} />
-            <Stack.Screen name="SellerSales" component={SellerSalesScreen} />
-            <Stack.Screen name="BuyerOrders" component={BuyerOrdersScreen} />
-            <Stack.Screen name="Chat" component={ChatScreen}/>
-            <Stack.Screen name="Analytics" component={AnalyticsScreen}/>
-            <Stack.Screen name="Ledger" component={LedgerPreviewScreen}/>
-            <Stack.Screen name="Khata" component={KhataScreen}/>
-            <Stack.Screen name="Voice" component={VoiceAssistantScreen}/>
+            <Stack.Screen name="Chat" component={ChatScreen} />
+            <Stack.Screen name="AddProperty" component={AddPropertyScreen} />
+            <Stack.Screen name="MandiPulse" component={MandiPulseScreen} />
+
+            {/* ========================================== */}
+            {/* 2. SUPPLY SIDE (Farmers & Wholesalers)     */}
+            {/* ========================================== */}
+            {(isFarmer || isWholesaler) && (
+              <>
+                <Stack.Screen name="AddProduct" component={AddProductScreen} />
+                <Stack.Screen name="Inventory" component={InventoryScreen} />
+                <Stack.Screen 
+                  name="InventoryDetail" 
+                  component={InventoryDetailScreen} 
+                  options={{ presentation: 'modal', headerShown: false }} 
+                />
+                <Stack.Screen name="SellerSales" component={SellerSalesScreen} />
+                <Stack.Screen name="Khata" component={KhataScreen} />
+                <Stack.Screen name="DispatchSetup" component={DispatchSetupScreen} />
+              </>
+            )}
+
+            {/* ========================================== */}
+            {/* 3. DEMAND SIDE (Retailers & Wholesalers)   */}
+            {/* ========================================== */}
+            {(isRetailer || isWholesaler) && (
+              <>
+                {/* 🚨 ProductDetailScreen moved here */}
+                <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
+                <Stack.Screen name="BuyerOrders" component={BuyerOrdersScreen} />
+                <Stack.Screen name="LiveTracking" component={LiveTrackingScreen} />
+                <Stack.Screen name="Analytics" component={AnalyticsScreen} />
+                <Stack.Screen name="Ledger" component={LedgerPreviewScreen} />
+                <Stack.Screen name="MandiPulse" component={MandiPulseScreen} />
+              </>
+            )}
+
+            {isRetailer && (
+              <Stack.Screen name="Quality" component={QualityCheckScreen} />
+            )}
           </>
         ) : (
+          /* ========================================== */
+          /* UNAUTHENTICATED STACK                      */
+          /* ========================================== */
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />

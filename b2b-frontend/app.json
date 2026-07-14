@@ -39,7 +39,6 @@
           }
         }
       ],
-      "@react-native-voice/voice",
       "@react-native-community/datetimepicker",
       "expo-sharing"
     ],

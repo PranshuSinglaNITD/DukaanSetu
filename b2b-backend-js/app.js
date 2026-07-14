@@ -22,6 +22,9 @@ import logisticsRoutes from './modules/logistics/logistics.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
 import shipmentRoutes from './modules/shipments/shipments.routes.js';
 import khataRoutes from './modules/khata/khata.routes.js'
+import voiceROutes from './modules/voice/voice.routes.js'
+import demandRoutes from './modules/demand/demands.routes.js'
+import { startDemandWorkers } from './cron/demand.worker.js';
 
 dotenv.config();
 
@@ -104,6 +107,11 @@ app.use('/api/logistics', logisticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/shipments', shipmentRoutes);
 app.use('/api/khata',khataRoutes);
+app.use('/api/voice',voiceROutes);
+app.use('/api/demands',demandRoutes);
+  
+startDemandWorkers();
+console.log("⚙️ Background workers initialized.");
 
 app.use((req, res, next) => {
   console.log(`404 ERROR: Frontend tried to hit -> ${req.method} ${req.originalUrl}`);

@@ -13,18 +13,14 @@ const productSchema = z.object({
   estimatedShelfLifeDays: z.coerce.number().min(0,"this cannot be left empty")
 });
 
+// ==========================================
 // 1. CREATE PRODUCT
+// ==========================================
 export const createProduct = async (req, res) => {
   try {
-    // 1. Validate incoming text/numeric fields (Zod coercion will handle strings from form-data)
     const validatedData = productSchema.parse(req.body);
+    const imageUrls = req.files ? req.files.map(file => `/uploads/${file.filename}`) : [];
 
-    // 2. Handle uploaded product images (Multer stores them in req.files)
-    const imageUrls = req.files 
-      ? req.files.map(file => `/uploads/${file.filename}`) 
-      : [];
-
-    // Optional: Ensure at least one product photo is uploaded
     if (imageUrls.length === 0) {
       return res.status(400).json({ error: "At least one product image is required." });
     }
@@ -32,7 +28,6 @@ export const createProduct = async (req, res) => {
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + parseInt(validatedData.estimatedShelfLifeDays, 10));
 
-    // 3. Save the product with images to PostgreSQL
     const newProduct = await prisma.product.create({
       data: {
         name: validatedData.name,
@@ -48,16 +43,16 @@ export const createProduct = async (req, res) => {
       },
       include: { seller: { select: { city: true } } }
     });
+
     const locationStr = newProduct.seller.city ? `in ${newProduct.seller.city}` : `at ${newProduct.mandiName}`;
     const intelligenceSentence = `SUPPLY ALERT: A new wholesale listing of ${newProduct.stock} ${newProduct.unit} of ${newProduct.name} was just posted ${locationStr} with an asking price of ₹${newProduct.price}/${newProduct.unit}.`;
     
-    // Fire and forget (don't `await` it, so it doesn't slow down the user's API response)
+    // Fire and forget AI data ingestion
     ingestNewMarketData(intelligenceSentence, { source: "internal_listing", crop: newProduct.name })
       .catch(err => console.error("AI Ingestion skipped:", err));
       
     res.status(201).json({ status: 'success', data: newProduct });
   } catch (error) {
-    console.error("Create Product Error:", error);
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: 'Invalid input data', details: error.errors });
     }
@@ -65,21 +60,37 @@ export const createProduct = async (req, res) => {
   }
 };
 
-// 2. GET ALL PRODUCTS (With optional filters for Mandi or Category)
+// ==========================================
+// 2. GET ALL PRODUCTS (Strict B2B Filtering)
+// ==========================================
 export const getAllProducts = async (req, res) => {
   try {
-    const currUserId=req.user.userId;
-    const { category, mandi, search, expiryDate }  = req.query;
+    const currUserId = req.user.userId;
+    const userRole = req.user.role; // 🚨 Extracted from JWT token
+    const { category, mandi, search } = req.query;
     
-    //the product listed by the seller should not be visible to him/her
-    const filter = { isAvailable: true, sellerId:{not:currUserId} };
+    let targetSellerRoles = [];
+    if (userRole === 'RETAILER') targetSellerRoles = ['WHOLESALER'];
+    else if (userRole === 'WHOLESALER') targetSellerRoles = ['FARMER', 'WHOLESALER'];
+    else if (userRole === 'FARMER') targetSellerRoles = ['FARMER']; // Research only
+
+    const filter = { 
+      isAvailable: true, 
+      sellerId: { not: currUserId },
+      seller: { role: { in: targetSellerRoles } } 
+    };
+
     if (category) filter.category = category.toUpperCase();
     if (mandi) filter.mandiName = { contains: mandi, mode: 'insensitive' };
     if (search) filter.name = { contains: search, mode: 'insensitive' };
 
     const products = await prisma.product.findMany({
       where: filter,
-      include: { seller: { select: { name: true, businessName: true, phone: true } } },
+      include: { 
+        seller: { 
+          select: { name: true,phone: true, role: true} 
+        } 
+      },
       orderBy: { updatedAt: 'desc' }
     });
 
@@ -89,13 +100,14 @@ export const getAllProducts = async (req, res) => {
   }
 };
 
+// ==========================================
 // 3. UPDATE PRODUCT
+// ==========================================
 export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body; // In a real app, validate this partial data too
+    const updateData = req.body; 
 
-    // Ensure the product belongs to the user trying to update it
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) return res.status(404).json({ error: 'Product not found' });
     if (product.sellerId !== req.user.userId) return res.status(403).json({ error: 'Unauthorized to edit this product' });
@@ -111,7 +123,9 @@ export const updateProduct = async (req, res) => {
   }
 };
 
+// ==========================================
 // 4. DELETE PRODUCT
+// ==========================================
 export const deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
@@ -128,55 +142,46 @@ export const deleteProduct = async (req, res) => {
   }
 };
 
+// ==========================================
+// 5. COMPARE PRICES (Role-Aware)
+// ==========================================
 export const comparePrices = async (req, res) => {
   try {
-    // We expect the frontend to pass the product name and the user's city
-    // Example: /api/products/compare?name=Wheat&city=Delhi
     const { name, city } = req.query;
+    const userRole = req.user.role;
 
-    if (!name) {
-      return res.status(400).json({ error: 'Product name is required for comparison.' });
-    }
+    if (!name) return res.status(400).json({ error: 'Product name is required for comparison.' });
 
-    // 1. Fetch all available products matching the name
-    // We order by price ascending, so the first result is guaranteed to be the cheapest
+    // Ensure they only compare prices of goods they are legally allowed to buy
+    let targetSellerRoles = [];
+    if (userRole === 'RETAILER') targetSellerRoles = ['WHOLESALER'];
+    else if (userRole === 'WHOLESALER') targetSellerRoles = ['FARMER', 'WHOLESALER'];
+    else if (userRole === 'FARMER') targetSellerRoles = ['FARMER'];
+
     const products = await prisma.product.findMany({
       where: {
         name: { contains: name, mode: 'insensitive' },
-        isAvailable: true
+        isAvailable: true,
+        seller: { role: { in: targetSellerRoles } }
       },
       include: {
-        seller: {
-          select: { name: true, businessName: true, phone: true, address: true }
-        }
+        seller: { select: { name: true, businessName: true, phone: true, address: true } }
       },
       orderBy: { price: 'asc' } 
     });
 
     if (products.length === 0) {
-      return res.status(404).json({ error: 'No products found for comparison.' });
+      return res.status(404).json({ error: 'No comparable products found in your supply chain tier.' });
     }
 
-    // 2. Extract the Cheapest Seller
     const cheapestSeller = products[0];
+    let nearbySellers = city ? products.filter(p => p.seller.address && p.seller.address.toLowerCase().includes(city.toLowerCase())) : [];
 
-    // 3. Find Nearby Sellers
-    // Filter the fetched products to see if the seller's address contains the requested city
-    let nearbySellers = [];
-    if (city) {
-      nearbySellers = products.filter(p => 
-        p.seller.address && 
-        p.seller.address.toLowerCase().includes(city.toLowerCase())
-      );
-    }
-
-    // 4. Generate Historical Pricing (MandiBrain MVP Mock)
-    // We create a realistic 6-day trend based on the current cheapest price
     const basePrice = cheapestSeller.price;
     const historicalPricing = [
-      { day: '5 Days Ago', price: Math.round(basePrice * 1.08) }, // 8% higher
+      { day: '5 Days Ago', price: Math.round(basePrice * 1.08) }, 
       { day: '4 Days Ago', price: Math.round(basePrice * 1.05) },
-      { day: '3 Days Ago', price: Math.round(basePrice * 0.98) }, // Dropped below current
+      { day: '3 Days Ago', price: Math.round(basePrice * 0.98) }, 
       { day: '2 Days Ago', price: Math.round(basePrice * 0.96) },
       { day: 'Yesterday', price: Math.round(basePrice * 0.99) },
       { day: 'Today', price: basePrice }
@@ -184,41 +189,44 @@ export const comparePrices = async (req, res) => {
 
     res.status(200).json({
       status: 'success',
-      data: {
-        query: name,
-        cheapestSeller,
-        nearbySellers,
-        historicalPricing,
-        totalSellersFound: products.length
-      }
+      data: { query: name, cheapestSeller, nearbySellers, historicalPricing, totalSellersFound: products.length }
     });
-
   } catch (error) {
-    console.error("Compare Prices Error:", error);
     res.status(500).json({ error: 'Failed to generate price comparison.' });
   }
 };
 
-// 5. PURCHASE PRODUCT
+// ==========================================
+// 6. PURCHASE PRODUCT
+// ==========================================
 export const purchaseProduct = async (req, res) => {
   try {
-    // 🚨 NEW: Added amountPaid and paymentMethod
-    const { productId, quantity, negotiationId, amountPaid, paymentMethod,sellerId } = req.body;
+    const { productId, quantity, negotiationId, amountPaid, paymentMethod } = req.body;
     const buyerId = req.user.userId; 
+    const buyerRole = req.user.role;
     
-    const buyQty = parseInt(quantity, 10);
-    if (isNaN(buyQty) || buyQty <= 0) {
-      return res.status(400).json({ error: "Invalid purchase quantity provided." });
+    // 🛡️ Farmers cannot procure goods
+    if (buyerRole === 'FARMER') {
+      return res.status(403).json({ error: "Access Denied: Farmers operate strictly on the supply side and cannot procure goods." });
     }
 
-    const product = await prisma.product.findUnique({ where: { id: productId } });
+    const buyQty = parseInt(quantity, 10);
+    if (isNaN(buyQty) || buyQty <= 0) return res.status(400).json({ error: "Invalid purchase quantity provided." });
+
+    const product = await prisma.product.findUnique({ 
+      where: { id: productId },
+      include: { seller: { select: { role: true } } } 
+    });
 
     if (!product) return res.status(404).json({ error: "Product not found" });
     if (product.sellerId === buyerId) return res.status(400).json({ error: "You cannot buy your own product" });
-    if (product.stock === undefined || product.stock === null) {
-        return res.status(500).json({ error: "Product database record is missing stock data." });
-    }
+    if (product.stock === undefined || product.stock === null) return res.status(500).json({ error: "Product database record is missing stock data." });
     if (product.stock < buyQty) return res.status(400).json({ error: "Insufficient stock available" });
+
+    // 🛡️ Strict Anti-Bypass Validation
+    if (buyerRole === 'RETAILER' && product.seller.role === 'FARMER') {
+      return res.status(403).json({ error: "Supply Chain Policy Violation: Retailers must procure goods through verified Wholesalers." });
+    }
 
     let finalUnitPrice = product.price;
 
@@ -243,7 +251,6 @@ export const purchaseProduct = async (req, res) => {
     const totalCost = finalUnitPrice * buyQty;
 
     // 🚨 KHATA MATH LOGIC
-    // If amountPaid is not provided, we assume they paid in full (cash on delivery / instant transfer)
     const paid = amountPaid !== undefined ? parseFloat(amountPaid) : totalCost;
     const due = totalCost - paid;
     
@@ -273,7 +280,7 @@ export const purchaseProduct = async (req, res) => {
         data: {
           userId: buyerId,
           name: product.name,
-          sellerId:product.sellerId,
+          sellerId: product.sellerId,
           unit: product.unit || 'KG',
           buyPrice: finalUnitPrice,
           quantity: buyQty,
@@ -281,7 +288,6 @@ export const purchaseProduct = async (req, res) => {
           paymentStatus: pStatus,
           amountPaid: paid,
           amountDue: due,
-          // Only create a Payment record if money actually changed hands
           payments: paid > 0 ? {
             create: {
               amount: paid,

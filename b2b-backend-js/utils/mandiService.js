@@ -15,7 +15,7 @@ export const getLiveMandiPrices = async (state, commodity, excludeUserId) => {
     let listings = await prisma.product.findMany({
       where: {
         name: { contains: commodity, mode: 'insensitive' },
-        sellerId: { not: excludeUserId }, // 🚨 Exclude the user's own listings
+        sellerId: { not: excludeUserId },
         stock: { gt: 0 },
         seller: {
           state: { contains: state, mode: 'insensitive' }

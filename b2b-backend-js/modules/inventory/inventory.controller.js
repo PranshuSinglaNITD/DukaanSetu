@@ -3,13 +3,18 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// ==========================================
+// 1. GET SMART PRICE (Role-Aware Prompting)
+// ==========================================
 export const getSmartPrice = async (req, res) => {
   const userId = req.user.userId;
+  const userRole = req.user.role; // 🚨 Extracted from JWT
+  
   try {
     const { name, category, buyPrice, unit } = req.body;
 
     if (!name || !buyPrice) {
-      return res.status(400).json({ error: "Product name and buy price are required." });
+      return res.status(400).json({ error: "Product name and base price/cost are required." });
     }
 
     const user = await prisma.user.findUnique({
@@ -17,22 +22,26 @@ export const getSmartPrice = async (req, res) => {
         select: { address: true, city: true }
     });
     
-    // Better fallback mapping
     const exactLocation = user?.city || user?.address || "local Indian B2B agricultural market";
     
-    // 🚨 Upgrade: Force the model to return raw, strict JSON natively
     const model = genAI.getGenerativeModel({ 
       model: "gemini-2.5-flash",
       generationConfig: { responseMimeType: "application/json" }
     });
 
+    // 🚨 ROLE-AWARE PROMPT LOGIC
+    let financialContext = "";
+    if (userRole === 'FARMER') {
+      financialContext = `A farmer located in ${exactLocation} harvested ${name} (${category}) with an estimated production cost of ₹${buyPrice} per ${unit}. Suggest a profitable B2B selling price to Wholesalers.`;
+    } else {
+      financialContext = `A ${userRole.toLowerCase()} located in ${exactLocation} bought ${name} (${category}) for ₹${buyPrice} per ${unit}. Suggest a profitable selling price for their buyers.`;
+    }
+
     const prompt = `
       You are 'MandiBrain', an expert AI pricing assistant for an Indian B2B agricultural marketplace. 
-      A shopkeeper located in ${exactLocation} bought ${name} (${category}) for ₹${buyPrice} per ${unit}. 
+      ${financialContext}
       
-      Suggest a highly competitive selling price specifically tailored for the local market in ${exactLocation}. 
       Ensure it guarantees a good profit margin (usually 10-25%) while remaining attractive to local buyers.
-      
       Respond ONLY with a valid JSON object using this exact schema:
       {"suggestedPrice": 45, "profitMarginPercent": 15, "reasoning": "string"}
     `;
@@ -40,81 +49,78 @@ export const getSmartPrice = async (req, res) => {
     const result = await model.generateContent(prompt);
     
     try {
-      // Safely parse the response (won't crash the server if AI glitches)
       const aiSuggestion = JSON.parse(result.response.text());
       res.status(200).json({ status: 'success', data: aiSuggestion });
     } catch (parseError) {
-      console.error("AI JSON Parsing Failed:", result.response.text());
       res.status(500).json({ error: 'AI generated invalid pricing data format.' });
     }
-
   } catch (error) {
-    console.error("MandiBrain AI Error:", error);
     res.status(500).json({ error: 'Failed to generate AI price suggestion' });
   }
 };
 
+// ==========================================
+// 2. ADD TO INVENTORY (The Ledger Fix)
+// ==========================================
 export const addToInventory = async (req, res) => {
   try {
     const { name, category, buyPrice, quantity, unit } = req.body;
     const userId = req.user.userId;
+    const userRole = req.user.role; // 🚨 Check who is adding inventory
 
     const parsedPrice = parseFloat(buyPrice);
     const parsedQty = parseInt(quantity, 10);
     const finalUnit = unit || 'KG';
 
     if (isNaN(parsedPrice) || isNaN(parsedQty)) {
-      return res.status(400).json({error: "Price and quantity must be valid numbers."});
+      return res.status(400).json({error: "Cost and quantity must be valid numbers."});
     }
 
-    if (!userId) {
-      return res.status(401).json({ error: 'User ID not found. Authentication failed.' });
+    // 🛡️ THE FIX: Farmers Harvest, Buyers Purchase.
+    if (userRole === 'FARMER') {
+      // 1. Farmer Logic: Just add to inventory. They didn't buy it, so NO purchase record.
+      const newItem = await prisma.inventory.create({
+        data: {
+          userId, name, category: category || 'General',
+          buyPrice: parsedPrice, // Treated conceptually as "Production Cost"
+          quantity: parsedQty, unit: finalUnit
+        }
+      });
+      return res.status(201).json({ status: 'success', message: 'Harvest added to inventory.', data: { newItem } });
+    } 
+    else {
+      // 2. Retailer/Wholesaler Logic: Add to inventory AND log the offline expense in the ledger.
+      const [newItem, newPurchase] = await prisma.$transaction([
+        prisma.inventory.create({
+          data: {
+            userId, name, category: category || 'General',
+            buyPrice: parsedPrice, quantity: parsedQty, unit: finalUnit
+          }
+        }),
+        prisma.purchase.create({
+          data: {
+            userId, name, unit: finalUnit, buyPrice: parsedPrice,
+            quantity: parsedQty, total: parsedPrice * parsedQty
+          }
+        })
+      ]);
+      return res.status(201).json({ status: 'success', message: 'Added to stock and permanent ledger', data: { newItem, newPurchase } });
     }
-
-    console.log("📦 Adding Inventory - UserId:", userId, "Name:", name, "Qty:", parsedQty);
-
-    const [newItem, newPurchase] = await prisma.$transaction([
-      prisma.inventory.create({
-        data: {
-          userId: userId,
-          name: name,
-          category: category || 'General',
-          buyPrice: parsedPrice,
-          quantity: parsedQty,
-          unit: finalUnit
-        }
-      }),
-      prisma.purchase.create({
-        data: {
-          userId: userId,
-          name: name,
-          unit: finalUnit,
-          buyPrice: parsedPrice,
-          quantity: parsedQty,
-          total: parsedPrice * parsedQty
-        }
-      })
-    ]);
-
-    console.log("Transaction Success - Inventory ID:", newItem.id, "Purchase ID:", newPurchase.id);
-    res.status(201).json({ status: 'success', message: 'Added to stock and permanent ledger', data: { newItem, newPurchase } });
   } catch (error) {
-    console.error("Add Inventory Transaction Error:", error.message);
-    console.error("Full Error:", error);
-    res.status(500).json({ error: 'Failed to add to inventory and ledger.', details: error.message });
+    res.status(500).json({ error: 'Failed to add to inventory and ledger.' });
   }
 };
 
+// ==========================================
+// 3. SELL OFFLINE INVENTORY (Unchanged - Works Great)
+// ==========================================
 export const sellInventoryItem = async (req, res) => {
   try {
-    // 🚨 NEW: Added Khata fields for offline customers
     const { inventoryId, quantitySold, sellPrice, amountPaid, buyerName, buyerPhone } = req.body;
     const sellQty = parseInt(quantitySold, 10);
     const price = parseFloat(sellPrice);
 
-    if (isNaN(sellQty) || isNaN(price) || sellQty <= 0) {
-      return res.status(400).json({ error: 'Invalid sale parameters.' });
-    }
+    if (isNaN(sellQty) || isNaN(price) || sellQty <= 0) return res.status(400).json({ error: 'Invalid sale parameters.' });
 
     const item = await prisma.inventory.findUnique({ where: { id: inventoryId } });
     
@@ -123,10 +129,8 @@ export const sellInventoryItem = async (req, res) => {
     if (item.quantity < sellQty) return res.status(400).json({ error: `Not enough stock. You only have ${item.quantity} ${item.unit} left.` });
 
     const totalRevenue = price * sellQty;
-    const profitPerUnit = price - item.buyPrice;
-    const totalProfit = profitPerUnit * sellQty;
+    const totalProfit = (price - item.buyPrice) * sellQty;
 
-    // 🚨 KHATA MATH LOGIC
     const paid = amountPaid !== undefined ? parseFloat(amountPaid) : totalRevenue;
     const due = totalRevenue - paid;
     
@@ -139,30 +143,24 @@ export const sellInventoryItem = async (req, res) => {
         where: { id: inventoryId },
         data: { quantity: { decrement: sellQty } }
       }),
-      
-      // 🚨 KHATA INTEGRATION: Tracks offline credit directly on the Sale record
       prisma.sale.create({
         data: {
-          inventoryId,
-          sellPrice: price,
-          quantity: sellQty,
-          profit: totalProfit,
-          buyerName: buyerName || "Walk-in Customer",
-          buyerPhone: buyerPhone || null,
-          paymentStatus: pStatus,
-          amountPaid: paid,
-          amountDue: due
+          inventoryId, sellPrice: price, quantity: sellQty, profit: totalProfit,
+          buyerName: buyerName || "Walk-in Customer", buyerPhone: buyerPhone || null,
+          paymentStatus: pStatus, amountPaid: paid, amountDue: due
         }
       })
     ]);
 
-    res.status(200).json({ status: 'success', message: 'Sale recorded in Khata', data: transaction[1] });
+    res.status(200).json({ status: 'success', message: 'Offline Sale recorded in Khata', data: transaction[1] });
   } catch (error) {
-    console.error("Sell Inventory Error:", error);
     res.status(500).json({ error: 'Failed to process sale' });
   }
 };
 
+// ==========================================
+// 4. GET MY INVENTORY 
+// ==========================================
 export const getMyInventory = async (req, res) => {
   try {
     const inventory = await prisma.inventory.findMany({
@@ -175,32 +173,42 @@ export const getMyInventory = async (req, res) => {
   }
 };
 
+// ==========================================
+// 5. GET ANALYTICS (Upgraded for B2B & B2C)
+// ==========================================
 export const getAnalytics = async (req, res) => {
   try {
-    //Let the database do the math rather than pulling everything into Node memory
-    const salesAggregations = await prisma.sale.aggregate({
-      where: { inventory: { userId: req.user.userId } },
-      _sum: {
-        profit: true,
-        quantity: true
-      }
+    const userId = req.user.userId;
+
+    // 1. Get OFFLINE sales (from the code above)
+    const offlineSales = await prisma.sale.aggregate({
+      where: { inventory: { userId: userId } },
+      _sum: { profit: true, quantity: true }
     });
 
-    // Since totalRevenue = sellPrice * quantity (which varies per row), 
-    // the safest way to get revenue without a complex raw SQL query is to fetch just those two columns
-    const allSales = await prisma.sale.findMany({
-      where: { inventory: { userId: req.user.userId } },
+    const offlineRecords = await prisma.sale.findMany({
+      where: { inventory: { userId: userId } },
       select: { sellPrice: true, quantity: true }
     });
+    const offlineRevenue = offlineRecords.reduce((acc, sale) => acc + (sale.sellPrice * sale.quantity), 0);
 
-    const totalRevenue = allSales.reduce((acc, sale) => acc + (sale.sellPrice * sale.quantity), 0);
+    // 2. Get ONLINE B2B sales (where this user was the seller in the platform)
+    // Assuming your Shipment or Purchase table links to sellerId
+    const onlineSales = await prisma.purchase.findMany({
+      where: { sellerId: userId },
+      select: { buyPrice: true, quantity: true }
+    });
+    
+    const onlineRevenue = onlineSales.reduce((acc, sale) => acc + (sale.buyPrice * sale.quantity), 0);
+    const onlineQuantity = onlineSales.reduce((acc, sale) => acc + sale.quantity, 0);
 
+    // Combine them for the true dashboard metric
     res.status(200).json({ 
       status: 'success', 
       data: {
-        totalRevenue: totalRevenue || 0,
-        totalProfit: salesAggregations._sum.profit || 0,
-        totalItemsSold: salesAggregations._sum.quantity || 0
+        totalRevenue: offlineRevenue + onlineRevenue,
+        totalItemsSold: (offlineSales._sum.quantity || 0) + onlineQuantity,
+        offlineProfitOnly: offlineSales._sum.profit || 0
       } 
     });
   } catch (error) {

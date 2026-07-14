@@ -1,9 +1,11 @@
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
   provider = "postgresql"
+  extensions=[vector]
 }
 
 // ─── ENUMS ─────────────────────────────────────────────────────────────
@@ -29,6 +31,7 @@ model User {
   address           String?  
   pushToken         String?  
   
+  status       String        @default("ACTIVE")
   properties        Property[]      @relation("UserProperties") 
   favoriteProperties Property[]     @relation("UserFavorites") 
   products          Product[]       @relation("UserProducts")
@@ -45,6 +48,11 @@ model User {
   // 🚨 NEW: Payment Links for Khata System
   paymentsMade      Payment[]       @relation("PaymentsMade")
   paymentsReceived  Payment[]       @relation("PaymentsReceived")
+  buyerDemands      BuyerDemand[]   @relation("BuyerDemands")
+
+  embedding   Unsupported("vector(768)")?
+  fraudProbability  Float           @default(0.0)  // e.g., 0.15 means 15% chance of fraud
+  isFraudFlagged    Boolean
 
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
@@ -228,4 +236,26 @@ model Payment {
   
   saleId      String?
   sale        Sale?     @relation(fields: [saleId], references: [id])
+}
+model BuyerDemand {
+  id              String      @id @default(uuid())
+  buyerId         String
+  buyer                 User     @relation("BuyerDemands", fields: [buyerId], references: [id])
+  cropName        String      
+  isCustomCrop    Boolean     @default(false) 
+  
+  region          String
+  status          String      @default("ACTIVE") // ACTIVE or CLOSED
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model KnowledgeDocument {
+  id          String   @id @default(uuid())
+  title       String
+  content     String   @db.Text
+  roleTarget  String   
+  embedding   Unsupported("vector(768)") 
+  
+  createdAt   DateTime @default(now())
 }

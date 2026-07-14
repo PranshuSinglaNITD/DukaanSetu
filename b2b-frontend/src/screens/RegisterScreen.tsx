@@ -18,7 +18,7 @@ import { AuthContext } from '../context/AuthContext';
 const SAFFRON = '#f97316';
 const NAVY    = '#1e293b';
 
-type Role = 'RETAILER' | 'WHOLESALER';
+type Role = 'RETAILER' | 'WHOLESALER'|"FARMER";
 
 const ROLES: { key: Role; label: string; icon: string; desc: string }[] = [
   {
@@ -32,6 +32,12 @@ const ROLES: { key: Role; label: string; icon: string; desc: string }[] = [
     label: 'Wholesaler',
     icon:  '🏭',
     desc:  'I supply goods in bulk',
+  },
+  {
+    key:   'FARMER',
+    label: 'Farmer',
+    icon:  '🏭',
+    desc:  'I deliver goods to wholesalers',
   },
 ];
 

@@ -1,0 +1,11 @@
+import express from 'express';
+import { protect } from '../../middlewares/auth.middleware.js';
+import { restrictTo } from '../../middlewares/role.middleware.js';
+import { createDemand, getMarketPulse, closeDemand,getAllActiveDemands } from './demands.controller.js';
+const router = express.Router();
+router.use(protect);
+router.get('/pulse', getMarketPulse);
+router.post('/create', restrictTo('WHOLESALER', 'RETAILER'), createDemand);
+router.put('/:id/close', restrictTo('WHOLESALER', 'RETAILER'), closeDemand);
+router.get('/list', getAllActiveDemands);
+export default router;

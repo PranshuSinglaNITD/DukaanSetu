@@ -6,7 +6,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_b2b_key_123';
 
 export const register = async (req, res) => {
   try {
-    const { phone, password, name, role = 'RETAILER',city } = req.body;
+    const { phone, password, name, role,city } = req.body;
 
     if (!phone || !password || !name||!city) {
       return res.status(400).json({ error: 'Phone, password, city and name are required.' });

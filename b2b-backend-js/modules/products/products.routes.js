@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import fs from 'fs';
 import { protect } from '../../middlewares/auth.middleware.js';
+import { restrictTo } from '../../middlewares/role.middleware.js';
 import { 
   createProduct, 
   getAllProducts, 
@@ -27,14 +28,29 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 const router = express.Router();
 
+// 1. ALL routes in this file require the user to be logged in
 router.use(protect);
+
+// ==========================================
+// UNIVERSAL ROUTES (Filters handled in controller)
+// ==========================================
 router.get('/', getAllProducts);
 router.get('/compare', comparePrices); // Must go before /:id
-router.post('/create', upload.array('images', 5), createProduct);
-router.put('/:id', updateProduct);
-router.delete('/:id', deleteProduct);
-router.post('/buy',purchaseProduct);
-router.post('/pay-order',payForOrder);
-router.post('/analyze-image',autoAnalyzeProductImage);
+
+// ==========================================
+// SUPPLY SIDE (Farmers & Wholesalers)
+// ==========================================
+// Only sellers can create, update, or delete physical inventory
+router.post('/create', restrictTo('FARMER', 'WHOLESALER'), upload.array('images', 5), createProduct);
+router.put('/:id', restrictTo('FARMER', 'WHOLESALER'), updateProduct);
+router.delete('/:id', restrictTo('FARMER', 'WHOLESALER'), deleteProduct);
+
+// ==========================================
+// DEMAND SIDE (Retailers & Wholesalers)
+// ==========================================
+// Only buyers can execute purchases, pay for orders, or run quality scans on incoming shipments
+router.post('/buy', restrictTo('RETAILER', 'WHOLESALER'), purchaseProduct);
+router.post('/pay-order', restrictTo('RETAILER', 'WHOLESALER'), payForOrder);
+router.post('/analyze-image', restrictTo('RETAILER', 'WHOLESALER'), autoAnalyzeProductImage);
 
 export default router;

@@ -1,12 +1,20 @@
 import prisma from '../../utils/db.js';
 
-// 1. Seller Adds Transport Details to an Accepted Deal
+// ==========================================
+// 1. SETUP DISPATCH (Sellers Only: Farmers & Wholesalers)
+// ==========================================
 export const setupDispatch = async (req, res) => {
   try {
     const { negotiationId, shipmentId, quantity, transportCost, driverName, driverPhone, vehicleNumber } = req.body;
     const sellerId = req.user.userId;
+    const userRole = req.user.role; // 🚨 Extracted from JWT
 
-    // 🚨 SCENARIO A: Direct Buy (Updating an existing pending shipment from "My Sales")
+    // 🛡️ STRICT ROLE CHECK: Retailers cannot dispatch trucks
+    if (userRole === 'RETAILER') {
+      return res.status(403).json({ error: "Access Denied: Retailers cannot dispatch shipments." });
+    }
+
+    // 🚨 SCENARIO A: Direct Buy (Updating an existing pending shipment)
     if (shipmentId) {
       const updatedShipment = await prisma.shipment.update({
         where: { id: shipmentId },
@@ -54,9 +62,15 @@ export const setupDispatch = async (req, res) => {
   }
 };
 
-// 2. GET SELLER'S SALES (For the Dispatch Dashboard)
+// ==========================================
+// 2. GET MY SALES (Sellers Only: Farmers & Wholesalers)
+// ==========================================
 export const getMySales = async (req, res) => {
   try {
+    if (req.user.role === 'RETAILER') {
+      return res.status(403).json({ error: "Access Denied: Retailers do not have outgoing sales." });
+    }
+
     const shipments = await prisma.shipment.findMany({
       where: { sellerId: req.user.userId },
       include: { product: true, buyer: { select: { name: true, phone: true } } },
@@ -68,9 +82,15 @@ export const getMySales = async (req, res) => {
   }
 };
 
-// 3. GET BUYER'S ORDERS (For Live Tracking)
+// ==========================================
+// 3. GET MY ORDERS (Buyers Only: Retailers & Wholesalers)
+// ==========================================
 export const getMyOrders = async (req, res) => {
   try {
+    if (req.user.role === 'FARMER') {
+      return res.status(403).json({ error: "Access Denied: Farmers only supply goods, they do not track incoming purchases." });
+    }
+
     const shipments = await prisma.shipment.findMany({
       where: { buyerId: req.user.userId },
       include: { product: true, seller: { select: { name: true, businessName: true } } },
@@ -82,9 +102,15 @@ export const getMyOrders = async (req, res) => {
   }
 };
 
-// 4. BUYER CONFIRMS DELIVERY (Kills the tracking loop)
+// ==========================================
+// 4. MARK DELIVERED (Buyers Only: Retailers & Wholesalers)
+// ==========================================
 export const markDelivered = async (req, res) => {
   try {
+    if (req.user.role === 'FARMER') {
+      return res.status(403).json({ error: "Access Denied: Farmers do not receive deliveries." });
+    }
+
     const { shipmentId } = req.body;
     const buyerId = req.user.userId;
 

@@ -157,7 +157,7 @@ const ProductRow = ({ prod, index, onPress }: { prod: any; index: number; onPres
             </View>
             <Text style={styles.prodSeller} numberOfLines={1}>
               <MaterialCommunityIcons name="store-outline" size={11} color="#94a3b8" />
-              {'  '}{prod.sellerName ?? 'Verified Seller'}
+              {'  '}{prod.seller?.name ?? prod.sellerName ?? 'Verified Seller'}
             </Text>
           </View>
 

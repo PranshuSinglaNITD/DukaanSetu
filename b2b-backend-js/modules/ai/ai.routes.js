@@ -1,5 +1,6 @@
 import express from 'express';
 import { handleAIChat } from './ai.controller.js';
+import { analyzeUserFraud } from './prediction.controller.js';
 import { searchMarketNews, ingestNewMarketData } from './marketKnowledge.js';
 import { protect } from '../../middlewares/auth.middleware.js';
 
@@ -49,5 +50,7 @@ router.post('/ingest', async (req, res) => {
     return res.status(500).json({ error: "Internal server error during data ingestion." });
   }
 });
+
+router.post('/fraud-check/:targetUserId', protect, analyzeUserFraud);
 
 export default router;

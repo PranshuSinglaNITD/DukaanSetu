@@ -7,6 +7,8 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import apiClient from '../api/client';
+import { SyncManager } from '../utils/SyncManager';
+import NetInfo from '@react-native-community/netinfo';  
 
 const SAFFRON = '#f97316';
 const NAVY    = '#1e293b';
@@ -87,26 +89,60 @@ export default function AddProductScreen({ navigation }: any) {
   };
 
   const handleSubmit = async () => {
-    if (!validate()) return;
-    setLoading(true);
-    try {
-      const formData = new FormData();
-      formData.append('name',     name.trim());
-      formData.append('category', category);
-      formData.append('price',    price);
-      formData.append('stock',    stock);
-      formData.append('unit',     unit);
-      formData.append('estimatedShelfLifeDays', shelfLife); // 🚨 NEW: Sent to backend
+  if (!validate()) return;
+  setLoading(true);
 
-      formData.append('images', { uri: image.uri, name: 'product.jpg', type: 'image/jpeg' } as any);
-      
-      await apiClient.post('/products/create', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-      Alert.alert('Listed!', `${name} added to Mandi.`, [{ text: 'OK', onPress: () => navigation.navigate('Landing') }]);
-    } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.error || 'Failed to list product');
-    }
-    setLoading(false);
+  // 1. Fetch current network state
+  const networkState = await NetInfo.fetch();
+
+  // 2. Create a plain JSON payload (No FormData yet!)
+  // We add a special flag 'isMultipart' so the SyncManager knows to rebuild it later.
+  const productPayload = {
+    name: name.trim(),
+    category,
+    price,
+    stock,
+    unit,
+    estimatedShelfLifeDays: shelfLife,
+    imageUri: image.uri, //We just store the text path to the image
+    isMultipart: true    //Our secret flag for the offline queue
   };
+
+  try {
+    //here we are online 
+    if (networkState.isConnected) {
+      // We have Wi-Fi, so build the FormData and send it immediately.
+      const formData = new FormData();
+      formData.append('name', productPayload.name);
+      formData.append('category', productPayload.category);
+      formData.append('price', productPayload.price);
+      formData.append('stock', productPayload.stock);
+      formData.append('unit', productPayload.unit);
+      formData.append('estimatedShelfLifeDays', productPayload.estimatedShelfLifeDays);
+      formData.append('images', { uri: productPayload.imageUri, name: 'product.jpg', type: 'image/jpeg' } as any);
+      
+      await apiClient.post('/products/create', formData, { 
+        headers: { 'Content-Type': 'multipart/form-data' } 
+      });
+      
+      Alert.alert('Listed!', `${name} added to Mandi.`, [{ text: 'OK', onPress: () => navigation.navigate('Landing') }]);
+      //here we are offline
+    } else {
+      // No Wi-Fi. Send the plain JSON object to our persistent queue.
+      await SyncManager.addJobToQueue('/products/create', productPayload);
+      Alert.alert(
+        'Offline Mode', 
+        `${name} saved locally. It will automatically upload to the marketplace when your connection returns.`, 
+        [{ text: 'OK', onPress: () => navigation.navigate('Landing') }]
+      );
+    }
+  } catch (err: any) {
+    await SyncManager.addJobToQueue('/products/create', productPayload);
+    Alert.alert('Server Timeout', 'Saved to offline queue. Will retry automatically.', [{ text: 'OK', onPress: () => navigation.navigate('Landing') }]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>

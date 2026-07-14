@@ -18,7 +18,9 @@ import { AuthContext } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
-// ─── Menu Config ─────────────────────────────────────────────────────────────
+// ─── Menu Config & RBAC (Role-Based Access Control) ──────────────────────────
+
+type Role = 'FARMER' | 'WHOLESALER' | 'RETAILER';
 
 type MenuItem = {
   label: string;
@@ -27,6 +29,7 @@ type MenuItem = {
   lib: 'ion' | 'mci';
   badge?: string | number;
   accent?: boolean;
+  roles?: Role[]; // 🚨 NEW: Determines which roles can see this item
 };
 
 type MenuSection = {
@@ -34,44 +37,58 @@ type MenuSection = {
   items: MenuItem[];
 };
 
-const MENU: MenuSection[] = [
+const MASTER_MENU: MenuSection[] = [
   {
     title: 'MAIN',
     items: [
-      { label: 'Dashboard',    route: 'Landing',     icon: 'view-dashboard-outline', lib: 'mci' },
-      { label: 'Live Mandi',   route: 'Marketplace', icon: 'storefront-outline',     lib: 'mci' },
-      { label: 'Analytics',    route: 'Analytics',   icon: 'chart-line',             lib: 'mci' },
-      {label:'MandiBrain', route:'Chat',icon:'chat-processing',lib:'mci'},
+      { label: 'Dashboard',    route: 'Landing',     icon: 'view-dashboard-outline', lib: 'mci' }, // Universal
+      { label: 'Live Mandi',   route: 'Marketplace', icon: 'storefront-outline',     lib: 'mci' }, // Universal
+      { label: 'MandiBrain',   route: 'Chat',        icon: 'chat-processing',        lib: 'mci' }, // Universal
+      { label: 'Analytics',    route: 'Analytics',   icon: 'chart-line',             lib: 'mci', roles: ['WHOLESALER', 'RETAILER'] },
+      { label: 'Quality Check',route: 'Quality',     icon: 'check-decagram-outline', lib: 'mci', roles: ['RETAILER'] },
     ],
   },
   {
     title: 'LISTINGS',
     items: [
-      { label: 'Add Product',   route: 'AddProduct',  icon: 'basket-plus-outline', lib: 'mci', accent: true },
-      { label: 'List Property', route: 'AddProperty', icon: 'home-plus-outline',   lib: 'mci', accent: true },
-      { label: 'My Inventory',  route: 'Inventory',   icon: 'clipboard-list-outline', lib: 'mci', badge: 3 },
-      { label: 'My KhataBook',  route: 'Khata',   icon: 'clipboard-list-outline', lib: 'mci', badge: 3 },
+      { label: 'Suggestions',   route: 'MandiPulse',  icon: 'lightbulb-on-outline',   lib: 'mci' }, // Universal
+      { label: 'Add Product',   route: 'AddProduct',  icon: 'basket-plus-outline',    lib: 'mci', accent: true, roles: ['FARMER', 'WHOLESALER'] },
+      { label: 'List Property', route: 'AddProperty', icon: 'home-plus-outline',      lib: 'mci', accent: true, roles: ['WHOLESALER'] },
+      { label: 'My Inventory',  route: 'Inventory',   icon: 'warehouse',              lib: 'mci', badge: 3,     roles: ['FARMER', 'WHOLESALER'] },
+      { label: 'My KhataBook',  route: 'Khata',       icon: 'book-open-page-variant-outline', lib: 'mci',       roles: ['FARMER', 'WHOLESALER'] },
     ],
-
   },
   {
     title: 'ORDERS & SALES',
     items: [
-      { label: 'Pending Orders',      route: 'Orders',       icon: 'package-variant-closed', lib: 'mci', badge: 2 },
-      { label: 'My Sales & Dispatch', route: 'SellerSales',  icon: 'truck-delivery-outline',  lib: 'mci' },
-      { label: 'Track Purchases',     route: 'BuyerOrders',  icon: 'map-marker-path',         lib: 'mci' },
-      {label:'Automatic Ledgers', route:'Ledger', icon:'',lib:'mci'},
+      { label: 'Pending Orders',      route: 'Orders',      icon: 'package-variant-closed', lib: 'mci', badge: 2 }, // Universal
+      { label: 'My Sales & Dispatch', route: 'SellerSales', icon: 'truck-delivery-outline',  lib: 'mci', roles: ['FARMER', 'WHOLESALER'] },
+      { label: 'Track Purchases',     route: 'BuyerOrders', icon: 'map-marker-path',         lib: 'mci', roles: ['WHOLESALER', 'RETAILER'] },
+      { label: 'Automatic Ledgers',   route: 'Ledger',      icon: 'file-document-outline',   lib: 'mci', roles: ['WHOLESALER', 'RETAILER'] },
     ],
   },
   {
     title: 'ACCOUNT',
     items: [
-      { label: 'Negotiations Inbox', route: 'Negotiations', icon: 'message-text-outline', lib: 'mci', badge: 5 },
-      { label: 'Favourites',         route: 'Favourites',   icon: 'heart-outline',         lib: 'mci' },
-      { label: 'Settings',           route: 'Settings',     icon: 'cog-outline',           lib: 'mci' },
+      { label: 'Negotiations Inbox', route: 'Negotiations', icon: 'message-text-outline', lib: 'mci', badge: 5 }, // Universal
+      { label: 'Favourites',         route: 'Favourites',   icon: 'heart-outline',         lib: 'mci' }, // Universal
+      { label: 'Settings',           route: 'Settings',     icon: 'cog-outline',           lib: 'mci' }, // Universal
     ],
   },
 ];
+
+// ─── Filter Logic ─────────────────────────────────────────────────────────────
+
+const getDynamicMenu = (userRole: Role): MenuSection[] => {
+  return MASTER_MENU.map(section => {
+    const filteredItems = section.items.filter(item => {
+      if (!item.roles) return true; // If no roles array is provided, it's public
+      return item.roles.includes(userRole);
+    });
+    return { ...section, items: filteredItems };
+  }).filter(section => section.items.length > 0); // Strip empty sections
+};
+
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -152,9 +169,14 @@ export default function Sidebar({
   const { user }   = useContext(AuthContext);
   const insets     = useSafeAreaInsets();
 
+  // 🚨 Determine the user's role, fallback to FARMER to prevent crashes
+  const currentRole = (user?.role as Role) || 'FARMER';
+  
+  // 🚨 Generate the filtered menu
+  const dynamicMenu = getDynamicMenu(currentRole);
+
   // Defer unmount so the drawer is removed from the tree only AFTER the
-  // close animation finishes (300 ms). This prevents elevation/shadow
-  // from bleeding through the screen edge when the sidebar is hidden.
+  // close animation finishes (300 ms).
   const [shouldRender, setShouldRender] = useState(isSidebarOpen);
   useEffect(() => {
     if (isSidebarOpen) {
@@ -193,7 +215,7 @@ export default function Sidebar({
         />
       )}
 
-      {/* Drawer — only mounted while open (or animating closed) to kill shadow bleed */}
+      {/* Drawer */}
       {shouldRender && (
       <Animated.View style={[styles.drawer, { transform: [{ translateX: slideAnim }] }]}>
 
@@ -257,7 +279,8 @@ export default function Sidebar({
           contentContainerStyle={styles.menuContent}
           showsVerticalScrollIndicator={false}
         >
-          {MENU.map((section) => (
+          {/* 🚨 Maps through dynamicMenu instead of MENU */}
+          {dynamicMenu.map((section) => (
             <View key={section.title}>
               <Text style={styles.sectionLabel}>{section.title}</Text>
               {section.items.map((item) => (

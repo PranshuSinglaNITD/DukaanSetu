@@ -25,11 +25,12 @@ import khataRoutes from './modules/khata/khata.routes.js'
 import voiceROutes from './modules/voice/voice.routes.js'
 import demandRoutes from './modules/demand/demands.routes.js'
 import { startDemandWorkers } from './cron/demand.worker.js';
+import reviewRoutes from './modules/review/review.routes.js';
 
 dotenv.config();
 
 const app = express();
-app.use(helmet()) //Helmet automatically sets various HTTP headers to protect against well-known web vulnerabilities (like XSS, clickjacking, etc.)
+app.use(helmet()) //helmet automatically sets various HTTP headers to protect against well-known web vulnerabilities (like XSS, clickjacking, etc.)
 const PORT = process.env.PORT || 3000;
 const httpServer=createServer(app)
 
@@ -76,7 +77,7 @@ const limiter=rateLimit({
   standardHeaders:true,
   legacyHeaders:true
 })
-app.use(limiter);
+// app.use(limiter);
 
 //specially for login
 const loginLimiter=rateLimit({
@@ -109,6 +110,7 @@ app.use('/api/shipments', shipmentRoutes);
 app.use('/api/khata',khataRoutes);
 app.use('/api/voice',voiceROutes);
 app.use('/api/demands',demandRoutes);
+app.use('/api/reviews',reviewRoutes);
   
 startDemandWorkers();
 console.log("⚙️ Background workers initialized.");

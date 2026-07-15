@@ -51,11 +51,30 @@ model User {
   buyerDemands      BuyerDemand[]   @relation("BuyerDemands")
 
   embedding   Unsupported("vector(768)")?
-  fraudProbability  Float           @default(0.0)  // e.g., 0.15 means 15% chance of fraud
-  isFraudFlagged    Boolean
+  averageRating     Float           @default(0.0)
+  totalReviews      Int             @default(0)
 
+  reviewsGiven      Review[]        @relation("ReviewsGiven")
+  reviewsReceived   Review[]        @relation("ReviewsReceived")
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
+}
+
+model Review {
+  id          String   @id @default(uuid())
+  rating      Int      // e.g., 1 to 5
+  feedback    String?  @db.Text
+  
+  reviewerId  String
+  reviewer    User     @relation("ReviewsGiven", fields: [reviewerId], references: [id])
+  
+  revieweeId  String
+  reply       String?  @db.Text
+  reviewee    User     @relation("ReviewsReceived", fields: [revieweeId], references: [id])
+  
+  createdAt   DateTime @default(now())
+
+  @@unique([reviewerId, revieweeId]) 
 }
 
 model Property {

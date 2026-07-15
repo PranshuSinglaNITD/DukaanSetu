@@ -107,7 +107,8 @@ export default function BuyerOrdersScreen({ navigation }: any) {
                                         onPress={() => navigation.navigate('LiveTracking', { 
                                             shipmentId: order.id, 
                                             driverName: order.driverName, 
-                                            vehicleNumber: order.vehicleNumber 
+                                            vehicleNumber: order.vehicleNumber,
+                                            sellerId:order.sellerId
                                         })}
                                     >
                                         <Ionicons 

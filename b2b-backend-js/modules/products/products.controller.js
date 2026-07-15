@@ -2,6 +2,7 @@ import prisma from '../../utils/db.js';
 import { z } from 'zod';
 import { ingestNewMarketData } from '../ai/marketKnowledge.js';
 
+//zod validation
 const productSchema = z.object({
   name: z.string().min(2, "Product name is required"),
   description: z.string().optional(),
@@ -88,7 +89,7 @@ export const getAllProducts = async (req, res) => {
       where: filter,
       include: { 
         seller: { 
-          select: { name: true,phone: true, role: true} 
+          select: { name: true,phone: true, role: true,averageRating:true,totalReviews:true} 
         } 
       },
       orderBy: { updatedAt: 'desc' }

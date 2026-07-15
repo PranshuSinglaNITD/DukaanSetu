@@ -10,12 +10,14 @@ import {
   StatusBar,
   ScrollView,
   Pressable,
+  TouchableOpacity,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AuthContext } from '../context/AuthContext';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
+import { getTrustDesignation } from '../utils/helper.js'
 
 const { width } = Dimensions.get('window');
 const CARD_W = (width - 48) / 2;
@@ -125,9 +127,9 @@ const ActionCard = ({ action, index, navigation }: { action: ActionItem; index: 
 
   return (
     <Animated.View style={{ width: CARD_W, opacity, transform: [{ translateY }, { scale }] }}>
-      <Pressable 
-        onPress={() => navigation.navigate(action.route)} 
-        onPressIn={handlePressIn} 
+      <Pressable
+        onPress={() => navigation.navigate(action.route)}
+        onPressIn={handlePressIn}
         onPressOut={handlePressOut}
       >
         <LinearGradient colors={action.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.actionCard}>
@@ -160,6 +162,7 @@ export default function LandingScreen({ navigation }: any) {
   // 🛡️ FRONTEND ROLE CHECK
   const userRole: UserRole = (user?.role as UserRole) || 'FARMER';
   const currentConfig = ROLE_CONFIGS[userRole];
+  const trustBadge = getTrustDesignation(user?.averageRating ?? 0, user?.totalReviews ?? 0);
 
   const toggleSidebar = () => {
     Animated.timing(slideAnim, {
@@ -177,12 +180,12 @@ export default function LandingScreen({ navigation }: any) {
         <Header toggleSidebar={toggleSidebar} />
 
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          
+
           {/* Dynamic Hero Layout */}
-          <LinearGradient 
-            colors={currentConfig.themeColors} 
-            start={{ x: 0, y: 0 }} 
-            end={{ x: 1, y: 1 }} 
+          <LinearGradient
+            colors={currentConfig.themeColors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={styles.heroCard}
           >
             <View style={styles.blob1} />
@@ -191,8 +194,26 @@ export default function LandingScreen({ navigation }: any) {
             <View style={styles.heroTop}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.greeting}>Logged in as {user?.name || 'User'}</Text>
+                <View style={[styles.trustBadge, { backgroundColor: trustBadge.bg }]}>
+                  <Text style={[styles.trustBadgeText, { color: trustBadge.color }]}>
+                    {trustBadge.title}
+                  </Text>
+                </View>
                 <Text style={styles.heroName}>{currentConfig.dashboardTitle}</Text>
                 <Text style={styles.heroSubText}>{currentConfig.dashboardSub}</Text>
+                <TouchableOpacity 
+        style={styles.ratingRow} 
+        onPress={() => navigation.navigate('MyReviews', { targetUserId: user.id })}
+      >
+        <Ionicons name="star" size={16} color="#fbbf24" />
+        <Text style={styles.ratingNumber}>
+          {user.averageRating > 0 ? user.averageRating.toFixed(1) : 'No Ratings'}
+        </Text>
+        <Text style={styles.totalReviews}>
+          ({user.totalReviews} {user.totalReviews === 1 ? 'review' : 'reviews'})
+        </Text>
+        <Ionicons name="chevron-forward" size={14} color="#94a3b8" style={{ marginLeft: 4 }} />
+      </TouchableOpacity>
               </View>
             </View>
 
@@ -231,22 +252,22 @@ export default function LandingScreen({ navigation }: any) {
           {/* Dynamic Grid Layout */}
           <View style={styles.grid}>
             {currentConfig.actions.map((action, index) => (
-              <ActionCard 
-                key={action.title} 
-                action={action} 
-                index={index} 
-                navigation={navigation} 
+              <ActionCard
+                key={action.title}
+                action={action}
+                index={index}
+                navigation={navigation}
               />
             ))}
           </View>
 
         </ScrollView>
 
-        <Sidebar 
-          slideAnim={slideAnim} 
-          toggleSidebar={toggleSidebar} 
-          logout={logout} 
-          isSidebarOpen={isSidebarOpen} 
+        <Sidebar
+          slideAnim={slideAnim}
+          toggleSidebar={toggleSidebar}
+          logout={logout}
+          isSidebarOpen={isSidebarOpen}
         />
       </View>
     </SafeAreaView>
@@ -284,4 +305,10 @@ const styles = StyleSheet.create({
   actionDecCircle: { position: 'absolute', top: -15, right: -15, width: 70, height: 70, borderRadius: 35, backgroundColor: 'rgba(255,255,255,0.06)' },
   actionTitle: { color: '#fff', fontSize: 14, fontWeight: '800', marginTop: 12 },
   actionSub: { color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: '500', marginTop: 2 },
+  sellerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  trustBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  trustBadgeText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, paddingVertical: 4 },
+  ratingNumber: { fontSize: 14, fontWeight: '700', color: '#1e293b', marginLeft: 4 },
+  totalReviews: { fontSize: 13, color: '#64748b', marginLeft: 4 },
 });

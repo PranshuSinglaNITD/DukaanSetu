@@ -1,0 +1,12 @@
+import express from 'express';
+import { protect } from '../../middlewares/auth.middleware.js';
+import { submitReview, getUserReviews,replyToReview,generateReviewSentiment,getMyReviews,getGivenReviews } from './review.controller.js';
+import { restrictTo } from '../../middlewares/role.middleware.js';
+const router = express.Router();
+router.get('/me/:userId', getMyReviews);
+router.get('/given/:userId', protect, getGivenReviews);
+router.get('/sentiment', generateReviewSentiment);
+router.put('/:reviewId/reply', replyToReview);
+router.get('/:targetUserId', protect, getUserReviews);
+router.post('/submit', protect,restrictTo('WHOLESALER','RETAILER'), submitReview);
+export default router;

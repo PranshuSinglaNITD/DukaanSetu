@@ -9,8 +9,8 @@ import {
 } from './shipments.controller.js';
 const router = express.Router();
 router.use(protect); 
-router.post('/dispatch', restrictTo('FARMER', 'WHOLESALER'), setupDispatch);
-router.get('/sales', restrictTo('FARMER', 'WHOLESALER'), getMySales);
-router.get('/orders', restrictTo('WHOLESALER', 'RETAILER'), getMyOrders);
+router.post('/setup', restrictTo('FARMER', 'WHOLESALER'), setupDispatch);
+router.get('/my-sales', restrictTo('FARMER', 'WHOLESALER'), getMySales);
+router.get('/my-orders', restrictTo('WHOLESALER', 'RETAILER'), getMyOrders);
 router.post('/delivered', restrictTo('WHOLESALER', 'RETAILER'), markDelivered);
 export default router;

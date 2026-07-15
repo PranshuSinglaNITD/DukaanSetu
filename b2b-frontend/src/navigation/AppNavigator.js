@@ -25,6 +25,8 @@ import LedgerPreviewScreen from '@/screens/LedgerPreviewScreen';
 import KhataScreen from '@/screens/KhataScreen';
 import QualityCheckScreen from '@/screens/QualityCheckScreen';
 import MandiPulseScreen from '@/screens/MandiPulseScreen';
+import ReviewForm from '@/screens/ReviewForm';
+import MyReviewsScreen from '@/screens/MyReviewsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -60,6 +62,8 @@ const AppNavigator = () => {
             <Stack.Screen name="Chat" component={ChatScreen} />
             <Stack.Screen name="AddProperty" component={AddPropertyScreen} />
             <Stack.Screen name="MandiPulse" component={MandiPulseScreen} />
+            <Stack.Screen name="MyReviews" component={MyReviewsScreen} />
+            <Stack.Screen name="ReviewForm" component={ReviewForm} />
 
             {/* ========================================== */}
             {/* 2. SUPPLY SIDE (Farmers & Wholesalers)     */}
@@ -76,6 +80,7 @@ const AppNavigator = () => {
                 <Stack.Screen name="SellerSales" component={SellerSalesScreen} />
                 <Stack.Screen name="Khata" component={KhataScreen} />
                 <Stack.Screen name="DispatchSetup" component={DispatchSetupScreen} />
+              
               </>
             )}
 
@@ -90,7 +95,6 @@ const AppNavigator = () => {
                 <Stack.Screen name="LiveTracking" component={LiveTrackingScreen} />
                 <Stack.Screen name="Analytics" component={AnalyticsScreen} />
                 <Stack.Screen name="Ledger" component={LedgerPreviewScreen} />
-                <Stack.Screen name="MandiPulse" component={MandiPulseScreen} />
               </>
             )}
 

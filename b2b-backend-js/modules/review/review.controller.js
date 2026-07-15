@@ -95,7 +95,6 @@ export const getUserReviews=async(req,res)=>{
 
 export const getMyReviews = async (req, res) => {
   try {
-    // 🚨 Extract the ID from the URL using brackets
     const { userId } = req.params; 
 
     const reviews = await prisma.review.findMany({
@@ -157,9 +156,8 @@ export const getMyReviews = async (req, res) => {
 
 export const replyToReview = async (req, res) => {
     try {
-        const { reviewId } = req.params; // Extracts the review ID from the URL
+        const { reviewId } = req.params;
         
-        // 🚨 FIX: Extract BOTH replyText and userId from the frontend request body
         const { replyText, userId } = req.body; 
 
         if (!replyText || replyText.trim() === "") {
@@ -173,7 +171,6 @@ export const replyToReview = async (req, res) => {
         const review = await prisma.review.findUnique({ where: { id: reviewId } });
         if (!review) return res.status(404).json({ error: "Review not found." });
         
-        // Now it properly compares String !== String
         if (review.revieweeId !== userId) {
             return res.status(403).json({ error: "Unauthorized. You can only reply to your own reviews." });
         }
@@ -232,14 +229,12 @@ export const generateReviewSentiment = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("AI Sentiment Error:", error);
     res.status(500).json({ error: "Failed to generate AI sentiment." });
   }
 };
 
 export const getGivenReviews = async (req, res) => {
   try {
-    // 🚨 Extract the ID from the URL using brackets
     const { userId } = req.params; 
 
     const reviews = await prisma.review.findMany({
@@ -253,7 +248,6 @@ export const getGivenReviews = async (req, res) => {
 
     res.status(200).json({ status: "success", data: reviews });
   } catch (error) {
-    console.error("🔥 GET GIVEN REVIEWS CRASHED:", error);
     res.status(500).json({ error: "Failed to fetch given reviews." });
   }
 };

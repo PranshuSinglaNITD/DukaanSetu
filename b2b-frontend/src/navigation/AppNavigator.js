@@ -27,6 +27,8 @@ import QualityCheckScreen from '@/screens/QualityCheckScreen';
 import MandiPulseScreen from '@/screens/MandiPulseScreen';
 import ReviewForm from '@/screens/ReviewForm';
 import MyReviewsScreen from '@/screens/MyReviewsScreen';
+import HumanChatScreen from '@/screens/ChatScreen';
+import InboxScreen from '@/screens/InboxScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -65,6 +67,8 @@ const AppNavigator = () => {
             <Stack.Screen name="MandiPulse" component={MandiPulseScreen} />
             <Stack.Screen name="MyReviews" component={MyReviewsScreen} />
             <Stack.Screen name="ReviewForm" component={ReviewForm} />
+            <Stack.Screen name="ChatScreen" component={HumanChatScreen}/>
+            <Stack.Screen name="InboxScreen" component={InboxScreen}/>
 
             {/* ========================================== */}
             {/* 2. SUPPLY SIDE (Farmers & Wholesalers)     */}

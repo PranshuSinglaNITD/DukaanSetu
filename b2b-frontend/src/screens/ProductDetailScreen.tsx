@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useContext } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert, Image, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -14,9 +14,12 @@ export default function ProductDetailScreen({ route, navigation }: any) {
   const currentUserId = user?.id || user?.userId;
 
   const [quantity, setQuantity] = useState('1');
-  const [amountPaid, setAmountPaid] = useState(''); // 🚨 NEW: Upfront paid amount
-  const [paymentMethod, setPaymentMethod] = useState('UPI'); // 🚨 NEW: Payment type selection
+  const [amountPaid, setAmountPaid] = useState(''); 
+  const [paymentMethod, setPaymentMethod] = useState('UPI'); 
+  
+  // Loading States
   const [loading, setLoading] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false); // 🚨 NEW: For chat init
   
   // Negotiation Modal States
   const [modalVisible, setModalVisible] = useState(false);
@@ -25,13 +28,14 @@ export default function ProductDetailScreen({ route, navigation }: any) {
 
   const isMyOwnProduct = product.sellerId === currentUserId;
 
-  // 🚨 Dynamic Math Calculations for Real-Time UI Updates
   const currentQty = parseInt(quantity, 10) || 0;
   const totalCost = displayPrice * currentQty;
   const currentPaid = amountPaid === '' ? totalCost : (parseFloat(amountPaid) || 0);
   const remainingDue = totalCost - currentPaid;
 
+  // ==========================================
   // 1. DIRECT BUY FLOW
+  // ==========================================
   const handleDirectBuy = async () => {
     const qty = parseInt(quantity, 10);
     if (!quantity || qty <= 0 || isNaN(qty)) return Alert.alert("Invalid Quantity", "Please specify a valid numeric volume.");
@@ -55,7 +59,6 @@ export default function ProductDetailScreen({ route, navigation }: any) {
           onPress: async () => {
             setLoading(true);
             try {
-              // 🚨 Upgraded to send financial parameters to your new backend system
               await apiClient.post('/products/buy', { 
                 productId: product.id, 
                 quantity: qty,
@@ -68,7 +71,6 @@ export default function ProductDetailScreen({ route, navigation }: any) {
             } catch (error: any) {
               Alert.alert("Transaction Failed", error.response?.data?.error || "Error executing checkout.");
             } finally {
-              setImageQuality(false);
               setLoading(false);
             }
           }
@@ -77,7 +79,9 @@ export default function ProductDetailScreen({ route, navigation }: any) {
     );
   };
 
+  // ==========================================
   // 2. NEGOTIATION FLOW
+  // ==========================================
   const handleStartNegotiation = async () => {
     if (!offerPrice || isNaN(parseFloat(offerPrice)) || parseFloat(offerPrice) <= 0) {
       return Alert.alert("Invalid Offer", "Please input a valid price proposal.");
@@ -85,7 +89,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
 
     setLoading(true);
     try {
-      await apiClient.post('/negotiation/start', {
+      await apiClient.post('/negotiations/start', {
         sellerId: product.sellerId,
         productId: product.id,
         offerPrice: offerPrice,
@@ -104,6 +108,32 @@ export default function ProductDetailScreen({ route, navigation }: any) {
     }
   };
 
+  // ==========================================
+  // 3. 🚨 NEW: CHAT FLOW
+  // ==========================================
+  const handleMessageSeller = async () => {
+    setChatLoading(true);
+    try {
+      // Hit the chat controller to get or create the room
+      const response = await apiClient.post('/chat/room', {
+        sellerId: product.sellerId,
+        productId: product.id
+      });
+      
+      const room = response.data.data;
+      
+      // Route to the new ChatScreen with the required params
+      navigation.navigate('ChatScreen', {
+        roomId: room.id,
+        currentUserId: currentUserId
+      });
+    } catch (error: any) {
+      Alert.alert("Chat Error", error.response?.data?.error || "Failed to initialize secure chat.");
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -117,7 +147,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         {/* Banner */}
         {product.images && product.images.length > 0 ? (
-          <Image source={{ uri: `http://192.168.1.8:3000${product.images[0]}` }} style={styles.bannerImage} />
+          <Image source={{ uri: `http://192.168.1.5:3000${product.images[0]}` }} style={styles.bannerImage} />
         ) : (
           <View style={styles.fallbackBanner}>
             <MaterialCommunityIcons name="sack" size={64} color="#bdc3c7" />
@@ -151,7 +181,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
             </View>
           </View>
 
-          {/* Seller Profile */}
+          {/* 🚨 UPDATED: Seller Profile with Chat Button */}
           <Text style={styles.sectionTitle}>Seller Profile</Text>
           <View style={styles.sellerCard}>
             <View style={styles.avatarFrame}>
@@ -162,6 +192,24 @@ export default function ProductDetailScreen({ route, navigation }: any) {
               <Text style={styles.sellerBusiness}>{product.seller?.businessName || "Independent Farmer"}</Text>
               <Text style={styles.sellerContact}>📞 {product.seller?.phone || "Contact Hidden"}</Text>
             </View>
+            
+            {/* The Message Button */}
+            {!isMyOwnProduct && (
+              <TouchableOpacity 
+                style={styles.chatIconButton} 
+                onPress={handleMessageSeller} 
+                disabled={chatLoading}
+              >
+                {chatLoading ? (
+                  <ActivityIndicator color="#3498db" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="chatbubble-ellipses" size={24} color="#3498db" />
+                    <Text style={styles.chatIconText}>Message</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Order Configuration */}
@@ -174,7 +222,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
             <Text style={styles.inputUnitAppend}>{product.unit}</Text>
           </View>
 
-          {/* 🚨 NEW: KHATA PAYMENT ARRANGEMENT SECTION */}
+          {/* Khata Payment Arrangement Section */}
           {!isMyOwnProduct && (
             <View style={styles.khataContainer}>
               <Text style={styles.sectionTitle}>Khata Credit Arrangement</Text>
@@ -231,8 +279,8 @@ export default function ProductDetailScreen({ route, navigation }: any) {
             <View style={styles.ctaGrid}>
               {!negotiationId && (
                 <TouchableOpacity style={styles.negotiateButton} onPress={() => setModalVisible(true)}>
-                  <Ionicons name="chatbubbles" size={20} color="#e67e22" style={{ marginRight: 8 }} />
-                  <Text style={styles.negotiateButtonText}>Negotiate Rate</Text>
+                  <MaterialCommunityIcons name="handshake" size={22} color="#e67e22" style={{ marginRight: 8 }} />
+                  <Text style={styles.negotiateButtonText}>Make Offer</Text>
                 </TouchableOpacity>
               )}
 
@@ -305,18 +353,23 @@ const styles = StyleSheet.create({
   unitLabel: { fontSize: 14, color: '#7f8c8d', fontWeight: '500' },
   metricStock: { fontSize: 20, fontWeight: '800', color: '#27ae60', marginTop: 4 },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: '#2c3e50', marginTop: 25, marginBottom: 12 },
+  
   sellerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f9fa', padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#f1f2f6' },
   avatarFrame: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#e8f4fd', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   avatarLetter: { color: '#3498db', fontSize: 22, fontWeight: '900' },
   sellerName: { fontSize: 16, fontWeight: '800', color: '#2c3e50' },
   sellerBusiness: { fontSize: 13, color: '#7f8c8d', marginTop: 2, fontWeight: '500' },
   sellerContact: { fontSize: 13, color: '#3498db', marginTop: 5, fontWeight: '600' },
+  
+  // 🚨 NEW CHAT ICON STYLE
+  chatIconButton: { backgroundColor: '#e8f4fd', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginLeft: 10 },
+  chatIconText: { color: '#3498db', fontSize: 11, fontWeight: '800', marginTop: 2 },
+  
   quantityInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f4f6f8', borderRadius: 12, borderWidth: 1, borderColor: '#e5e8e8', paddingHorizontal: 15 },
   quantityInput: { flex: 1, height: 50, fontSize: 16, color: '#2c3e50', fontWeight: '700' },
   inputUnitAppend: { fontSize: 15, fontWeight: '700', color: '#7f8c8d' },
   currencyPrefix: { fontSize: 16, fontWeight: '700', color: '#7f8c8d', marginRight: 5 },
   
-  // 🚨 NEW KHATA UX STYLES
   khataContainer: { marginTop: 10, padding: 5 },
   billBreakdown: { backgroundColor: '#F8FAFC', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 12 },
   breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
@@ -352,7 +405,3 @@ const styles = StyleSheet.create({
   transmitOfferBtn: { backgroundColor: '#e67e22', height: 55, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginTop: 30, marginBottom: 20 },
   transmitOfferBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' }
 });
-
-function setImageQuality(arg0: boolean) {
-  throw new Error('Function not implemented.');
-}

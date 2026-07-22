@@ -72,6 +72,7 @@ const MASTER_MENU: MenuSection[] = [
     items: [
       { label: 'Negotiations Inbox', route: 'Negotiations', icon: 'message-text-outline', lib: 'mci', badge: 5 }, // Universal
       { label: 'My Reviews', route: 'MyReviews', icon: 'star-outline', lib: 'mci', badge: 5 },
+      { label: 'My Inbox', route: 'InboxScreen', icon: 'star-outline', lib: 'mci', badge: 5 },
       { label: 'Favourites',         route: 'Favourites',   icon: 'heart-outline',         lib: 'mci' }, // Universal
       { label: 'Settings',           route: 'Settings',     icon: 'cog-outline',           lib: 'mci' }, // Universal
     ],

@@ -1,135 +1,113 @@
 import prisma from '../../utils/db.js';
 
 // ==========================================
-// 1. GET OR CREATE CHAT ROOM
+// 1. INITIALIZE OR FETCH CHAT ROOM
 // ==========================================
 export const initializeRoom = async (req, res) => {
   try {
     const { sellerId, productId } = req.body;
     const buyerId = req.user.userId;
 
+    // Prevent users from chatting with themselves
     if (buyerId === sellerId) {
-      return res.status(400).json({ error: "You cannot chat with yourself." });
+      return res.status(400).json({ error: "You cannot initiate a chat with yourself." });
     }
 
-    // Check if room already exists for this exact product and user pair
+    // Check if a chat room already exists for this exact product and user pair
     let room = await prisma.chatRoom.findUnique({
       where: {
-        buyerId_sellerId_productId: { buyerId, sellerId, productId }
+        buyerId_sellerId_productId: { 
+          buyerId, 
+          sellerId, 
+          productId 
+        }
+      },
+      include: {
+        seller: { select: { name: true, businessName: true } },
+        product: { select: { name: true, price: true } }
       }
     });
 
+    // If no room exists, create a fresh one
     if (!room) {
       room = await prisma.chatRoom.create({
-        data: { buyerId, sellerId, productId }
+        data: { 
+          buyerId, 
+          sellerId, 
+          productId 
+        },
+        include: {
+          seller: { select: { name: true, businessName: true } },
+          product: { select: { name: true, price: true } }
+        }
       });
     }
 
     res.status(200).json({ status: 'success', data: room });
   } catch (error) {
-    console.error("Room Init Error:", error);
+    console.error("Room Initialization Error:", error);
     res.status(500).json({ error: "Failed to initialize chat room." });
   }
 };
 
 // ==========================================
-// 2. GET CHAT HISTORY
+// 2. FETCH CHAT HISTORY
 // ==========================================
 export const getRoomMessages = async (req, res) => {
   try {
     const { roomId } = req.params;
 
+    // Optional: You could add a quick check here to ensure req.user.userId 
+    // is either the buyerId or sellerId of this room for extra security.
+
     const messages = await prisma.chatMessage.findMany({
       where: { roomId },
       include: {
-        sender: { select: { name: true, role: true } },
-        negotiation: true // Includes the offer details if this bubble is an OFFER type
+        // Prisma will safely return null for the sender if this is a SYSTEM message
+        sender: { 
+          select: { 
+            name: true, 
+            role: true 
+          } 
+        }
       },
-      orderBy: { createdAt: 'asc' }
+      orderBy: { 
+        createdAt: 'asc' // Oldest messages first, so they render top-to-bottom on the phone
+      }
     });
 
     res.status(200).json({ status: 'success', data: messages });
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch messages." });
+    console.error("Fetch Messages Error:", error);
+    res.status(500).json({ error: "Failed to fetch chat history." });
   }
 };
 
-// ==========================================
-// 3. CREATE ACTIONABLE OFFER (Seller Only)
-// ==========================================
-export const createOfferMessage = async (req, res) => {
+export const getUserInbox = async (req, res) => {
   try {
-    const { roomId, productId, proposedPrice, quantity } = req.body;
-    const senderId = req.user.userId;
+    const userId = req.user.userId;
 
-    // 1. Create the official Negotiation record
-    const newOffer = await prisma.negotiation.create({
-      data: {
-        productId,
-        buyerId: req.body.buyerId, // Passed from frontend context
-        sellerId: senderId,
-        status: 'PENDING',
-        offers: {
-          create: {
-            price: parseFloat(proposedPrice),
-            quantity: parseInt(quantity, 10),
-            offeredById: senderId
-          }
-        }
-      }
-    });
-
-    // 2. Create the Chat Bubble to display the offer in the thread
-    const offerMessage = await prisma.chatMessage.create({
-      data: {
-        roomId,
-        senderId,
-        type: 'OFFER',
-        text: `Custom Offer: ₹${proposedPrice} for ${quantity} units.`,
-        negotiationId: newOffer.id
+    const rooms = await prisma.chatRoom.findMany({
+      where: {
+        OR: [{ buyerId: userId }, { sellerId: userId }]
       },
-      include: { negotiation: true }
-    });
-
-    res.status(201).json({ status: 'success', data: offerMessage });
-  } catch (error) {
-    console.error("Offer Creation Error:", error);
-    res.status(500).json({ error: "Failed to create offer." });
-  }
-};
-
-// ==========================================
-// 4. RESPOND TO OFFER (Buyer Only)
-// ==========================================
-export const respondToOffer = async (req, res) => {
-  try {
-    const { negotiationId } = req.params;
-    const { response, roomId } = req.body; // response = 'ACCEPTED' or 'REJECTED'
-    const buyerId = req.user.userId;
-
-    // We use a transaction so the negotiation state and the chat update happen simultaneously
-    const result = await prisma.$transaction(async (prisma) => {
-      // 1. Update the official negotiation state
-      const updatedNegotiation = await prisma.negotiation.update({
-        where: { id: negotiationId },
-        data: { status: response }
-      });
-
-      // 2. Drop a system message into the chat confirming the action
-      const systemMessage = await prisma.chatMessage.create({
-        data: {
-          roomId,
-          senderId: buyerId,
-          type: 'TEXT',
-          text: `Offer has been ${response.toLowerCase()} by the buyer.`
+      include: {
+        // Fetch details of both users so the frontend can figure out who "the other guy" is
+        buyer: { select: { id: true, name: true, businessName: true } },
+        seller: { select: { id: true, name: true, businessName: true } },
+        product: { select: { name: true } },
+        // Grab only the single most recent message to display as a preview
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1 
         }
-      });
-
-      return { updatedNegotiation, systemMessage };
+      },
+      orderBy: { updatedAt: 'desc' } // Sort by most recently active
     });
 
-    res.status(200).json({ status: 'success', data: result });
+    res.status(200).json({ status: 'success', data: rooms });
   } catch (error) {
-    res.status(500).json({ error: "Failed to process offer response." });
+    console.error("Inbox Fetch Error:", error);
+    res.status(500).json({ error: "Failed to fetch inbox." });
   }
 };

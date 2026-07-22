@@ -56,6 +56,7 @@ const AppNavigator = () => {
             {/* 1. UNIVERSAL SCREENS (Everyone sees these) */}
             {/* ========================================== */}
             <Stack.Screen name="Landing" component={LandingScreen} />
+            <Stack.Screen name="AddProduct" component={AddProductScreen} />
             <Stack.Screen name="Marketplace" component={HomeScreen} />
             <Stack.Screen name="Negotiations" component={NegotiationsScreen} />
             <Stack.Screen name="NegotiationDetail" component={NegotiationDetailScreen} />
@@ -70,7 +71,6 @@ const AppNavigator = () => {
             {/* ========================================== */}
             {(isFarmer || isWholesaler) && (
               <>
-                <Stack.Screen name="AddProduct" component={AddProductScreen} />
                 <Stack.Screen name="Inventory" component={InventoryScreen} />
                 <Stack.Screen 
                   name="InventoryDetail" 

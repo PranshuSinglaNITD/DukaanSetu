@@ -26,6 +26,7 @@ import voiceROutes from './modules/voice/voice.routes.js'
 import demandRoutes from './modules/demand/demands.routes.js'
 import { startDemandWorkers } from './cron/demand.worker.js';
 import reviewRoutes from './modules/review/review.routes.js';
+import documentRoutes from './modules/document/document.routes.js'
 
 dotenv.config();
 
@@ -111,6 +112,7 @@ app.use('/api/khata',khataRoutes);
 app.use('/api/voice',voiceROutes);
 app.use('/api/demands',demandRoutes);
 app.use('/api/reviews',reviewRoutes);
+app.use('/api/docs',documentRoutes);
   
 startDemandWorkers();
 console.log("⚙️ Background workers initialized.");

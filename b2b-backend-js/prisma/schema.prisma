@@ -77,6 +77,13 @@ model Review {
   @@unique([reviewerId, revieweeId]) 
 }
 
+model Document {
+  id        String   @id @default(uuid())
+  text      String
+  metadata  Json
+  embedding Unsupported("vector(768)")
+}
+
 model Property {
   id           String   @id @default(uuid())
   ownerId      String

@@ -13,8 +13,6 @@ import Sidebar from '../components/Sidebar';
 
 const { width } = Dimensions.get('window');
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const PRODUCT_CATEGORIES = ['All', 'Grains', 'Pulses', 'Oilseeds', 'Vegetables', 'Spices'];
 const PROPERTY_TYPES     = ['All', 'For Rent', 'For Sale'];
 
@@ -25,7 +23,6 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-/** Animated entrance wrapper */
 const FadeSlideIn = ({ children, delay = 0, fromY = 16 }: any) => {
   const opacity = useRef(new Animated.Value(0)).current;
   const slideY  = useRef(new Animated.Value(fromY)).current;
@@ -44,10 +41,7 @@ const FadeSlideIn = ({ children, delay = 0, fromY = 16 }: any) => {
   );
 };
 
-/** Category pill */
-const CategoryPill = ({
-  label, icon, active, onPress,
-}: { label: string; icon: string; active: boolean; onPress: () => void }) => (
+const CategoryPill = ({ label, icon, active, onPress }: { label: string; icon: string; active: boolean; onPress: () => void }) => (
   <Pressable onPress={onPress} style={[styles.pill, active && styles.pillActive]}>
     <MaterialCommunityIcons
       name={icon as any}
@@ -59,7 +53,6 @@ const CategoryPill = ({
   </Pressable>
 );
 
-/** Property card */
 const PropertyCard = ({ prop, index, onPress }: { prop: any; index: number; onPress: () => void }) => {
   const scale = useRef(new Animated.Value(1)).current;
   const pressIn  = () => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 50, bounciness: 3 }).start();
@@ -75,7 +68,6 @@ const PropertyCard = ({ prop, index, onPress }: { prop: any; index: number; onPr
           onPressOut={pressOut}
           style={styles.propCard}
         >
-          {/* Image / placeholder */}
           {prop.images?.length > 0 ? (
             <Image source={{ uri: prop.images[0] }} style={styles.propImage} resizeMode="cover" />
           ) : (
@@ -83,24 +75,18 @@ const PropertyCard = ({ prop, index, onPress }: { prop: any; index: number; onPr
               <Ionicons name="business" size={36} color="rgba(255,255,255,0.4)" />
             </LinearGradient>
           )}
-
-          {/* Listing type badge */}
           <View style={[styles.propBadge, { backgroundColor: isRent ? '#1d4ed8' : '#b45309' }]}>
             <Text style={styles.propBadgeText}>FOR {prop.listingType}</Text>
           </View>
-
-          {/* Favourite */}
           <TouchableOpacity style={styles.heartBtn}>
             <Ionicons name="heart-outline" size={16} color="#fff" />
           </TouchableOpacity>
-
           <View style={styles.propBody}>
             <Text style={styles.propTitle} numberOfLines={1}>{prop.title}</Text>
             <View style={styles.propLocRow}>
               <Ionicons name="location-sharp" size={12} color="#059669" />
               <Text style={styles.propLoc} numberOfLines={1}>{prop.city}, {prop.state}</Text>
             </View>
-
             <View style={styles.propFooter}>
               <View>
                 <Text style={styles.propPrice}>₹{Number(prop.price).toLocaleString('en-IN')}</Text>
@@ -118,14 +104,17 @@ const PropertyCard = ({ prop, index, onPress }: { prop: any; index: number; onPr
   );
 };
 
-/** Product row */
 const ProductRow = ({ prod, index, onPress }: { prod: any; index: number; onPress: () => void }) => {
   const scale   = useRef(new Animated.Value(1)).current;
   const pressIn  = () => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 50, bounciness: 3 }).start();
   const pressOut = () => Animated.spring(scale, { toValue: 1,    useNativeDriver: true, speed: 50, bounciness: 3 }).start();
 
-  // Fake trend for visual richness (swap with real data when available)
-  const up = index % 3 !== 1;
+  const currentPrice = Number(prod.price);
+  
+  // Safely extract the market analysis injected by the backend API
+  const analysis = prod.marketAnalysis || { isExpensive: false, displayMessage: "Matches Average" };
+  const isExpensive = analysis.isExpensive;
+  const trendLabel = analysis.displayMessage;
 
   return (
     <FadeSlideIn delay={120 + index * 55} fromY={14}>
@@ -136,15 +125,12 @@ const ProductRow = ({ prod, index, onPress }: { prod: any; index: number; onPres
           onPressOut={pressOut}
           style={styles.prodRow}
         >
-          {/* Icon bg */}
           <LinearGradient
-            colors={up ? ['#052e16', '#059669'] : ['#7c2d12', '#ea580c']}
+            colors={!isExpensive ? ['#052e16', '#059669'] : ['#7c2d12', '#ea580c']}
             style={styles.prodIconBg}
           >
             <MaterialCommunityIcons name="grain" size={22} color="#fff" />
           </LinearGradient>
-
-          {/* Details */}
           <View style={styles.prodMid}>
             <Text style={styles.prodName}>{prod.name}</Text>
             <View style={styles.prodMetaRow}>
@@ -161,18 +147,17 @@ const ProductRow = ({ prod, index, onPress }: { prod: any; index: number; onPres
             </Text>
           </View>
 
-          {/* Price tag */}
           <View style={styles.prodPriceWrap}>
-            <Text style={styles.prodPrice}>₹{Number(prod.price).toLocaleString('en-IN')}</Text>
+            <Text style={styles.prodPrice}>₹{currentPrice.toLocaleString('en-IN')}</Text>
             <Text style={styles.prodUnit}>/{prod.unit}</Text>
-            <View style={[styles.trendChip, { backgroundColor: up ? '#d1fae5' : '#fee2e2' }]}>
+            <View style={[styles.trendChip, { backgroundColor: isExpensive ? '#fee2e2' : '#d1fae5' }]}>
               <MaterialCommunityIcons
-                name={up ? 'trending-up' : 'trending-down'}
+                name={isExpensive ? 'arrow-up-right' : 'arrow-down-right'}
                 size={11}
-                color={up ? '#059669' : '#ef4444'}
+                color={isExpensive ? '#ef4444' : '#059669'}
               />
-              <Text style={[styles.trendText, { color: up ? '#059669' : '#ef4444' }]}>
-                {up ? '+1.2%' : '-0.8%'}
+              <Text style={[styles.trendText, { color: isExpensive ? '#ef4444' : '#059669' }]}>
+                {trendLabel}
               </Text>
             </View>
           </View>
@@ -182,7 +167,6 @@ const ProductRow = ({ prod, index, onPress }: { prod: any; index: number; onPres
   );
 };
 
-/** Empty state */
 const EmptyState = ({ message }: { message: string }) => (
   <View style={styles.emptyWrap}>
     <MaterialCommunityIcons name="tray-remove" size={38} color="#cbd5e1" />
@@ -191,7 +175,7 @@ const EmptyState = ({ message }: { message: string }) => (
   </View>
 );
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function MarketplaceScreen({ navigation }: any) {
   // @ts-ignore
@@ -220,8 +204,8 @@ export default function MarketplaceScreen({ navigation }: any) {
       ]);
       const allP  = pRes.data?.data  ?? [];
       const allPr = prRes.data?.data ?? [];
-      setProducts(allP.filter((p: any)  => p.sellerId !== user?.id));
-      setProperties(allPr.filter((p: any) => p.ownerId  !== user?.id));
+      setProducts(allP);
+      setProperties(allPr);
     } catch (e: any) {
       console.log('🚨 FETCH ERROR:', e.response?.data ?? e.message);
     } finally {
@@ -238,7 +222,6 @@ export default function MarketplaceScreen({ navigation }: any) {
     setSidebarOpen(p => !p);
   };
 
-  // ── Derived lists ──
   const filteredProducts = products.filter((p: any) => {
     const matchSearch = p.name?.toLowerCase().includes(search.toLowerCase());
     const matchCat    = productCat === 'All' || p.category === productCat;
@@ -247,10 +230,10 @@ export default function MarketplaceScreen({ navigation }: any) {
 
   const filteredProperties = properties.filter((p: any) => {
     const matchSearch = p.title?.toLowerCase().includes(search.toLowerCase())
-                     || p.city?.toLowerCase().includes(search.toLowerCase());
+                       || p.city?.toLowerCase().includes(search.toLowerCase());
     const matchType   = propType === 'All'
-                     || (propType === 'For Rent' && p.listingType === 'RENT')
-                     || (propType === 'For Sale' && p.listingType === 'SALE');
+                       || (propType === 'For Rent' && p.listingType === 'RENT')
+                       || (propType === 'For Sale' && p.listingType === 'SALE');
     return matchSearch && matchType;
   });
 
@@ -261,8 +244,7 @@ export default function MarketplaceScreen({ navigation }: any) {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.root}>
         <Header toggleSidebar={toggleSidebar} />
-
-        {/* ── Search bar ── */}
+        
         <View style={styles.searchWrap}>
           <Animated.View style={[styles.searchBox, { transform: [{ scale: searchScale }] }]}>
             <Ionicons name="search" size={18} color="#94a3b8" style={{ marginRight: 10 }} />
@@ -282,13 +264,11 @@ export default function MarketplaceScreen({ navigation }: any) {
             )}
           </Animated.View>
 
-          {/* Filter button */}
           <TouchableOpacity style={styles.filterBtn}>
             <MaterialCommunityIcons name="tune-variant" size={20} color="#059669" />
           </TouchableOpacity>
         </View>
 
-        {/* ── Tab switcher ── */}
         <View style={styles.tabRow}>
           {(['products', 'properties'] as const).map(tab => (
             <TouchableOpacity
@@ -320,11 +300,8 @@ export default function MarketplaceScreen({ navigation }: any) {
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-
-            {/* ── PRODUCTS TAB ── */}
             {activeTab === 'products' && (
               <>
-                {/* Market summary strip */}
                 <FadeSlideIn delay={0}>
                   <LinearGradient colors={['#052e16', '#065f46']} style={styles.summaryStrip}>
                     <View style={styles.summaryItem}>
@@ -348,7 +325,13 @@ export default function MarketplaceScreen({ navigation }: any) {
                   </LinearGradient>
                 </FadeSlideIn>
 
-                {/* Category pills */}
+                <View style={styles.disclaimerBox}>
+                  <MaterialCommunityIcons name="information-outline" size={14} color="#059669" />
+                  <Text style={styles.disclaimerText}>
+                    Price comparisons are based on majority consensus. Prices do not guarantee or verify physical product quality.
+                  </Text>
+                </View>
+
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -365,7 +348,6 @@ export default function MarketplaceScreen({ navigation }: any) {
                   ))}
                 </ScrollView>
 
-                {/* Results header */}
                 <View style={styles.resultsRow}>
                   <Text style={styles.resultsText}>
                     {filteredProducts.length} result{filteredProducts.length !== 1 ? 's' : ''}
@@ -392,10 +374,8 @@ export default function MarketplaceScreen({ navigation }: any) {
               </>
             )}
 
-            {/* ── PROPERTIES TAB ── */}
             {activeTab === 'properties' && (
               <>
-                {/* Type filter pills */}
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -412,7 +392,6 @@ export default function MarketplaceScreen({ navigation }: any) {
                   ))}
                 </ScrollView>
 
-                {/* Results header */}
                 <View style={styles.resultsRow}>
                   <Text style={styles.resultsText}>
                     {filteredProperties.length} propert{filteredProperties.length !== 1 ? 'ies' : 'y'}
@@ -426,7 +405,6 @@ export default function MarketplaceScreen({ navigation }: any) {
                 {filteredProperties.length === 0 ? (
                   <EmptyState message="No properties available right now." />
                 ) : (
-                  // 2-column grid for properties
                   <View style={styles.propGrid}>
                     {filteredProperties.map((prop: any, i: number) => (
                       <View key={prop.id} style={{ width: (width - 48) / 2 }}>
@@ -457,16 +435,12 @@ export default function MarketplaceScreen({ navigation }: any) {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-
   safe: { flex: 1, backgroundColor: '#f5efe6' },
   root: { flex: 1, position: 'relative', backgroundColor: '#f5efe6' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
   loadingText: { color: '#94a3b8', fontSize: 13, fontWeight: '500' },
 
-  // ── Search ──────────────────────────────────────────────────────────────
   searchWrap: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 12,
@@ -488,7 +462,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
 
-  // ── Tabs ────────────────────────────────────────────────────────────────
   tabRow: {
     flexDirection: 'row', gap: 10,
     paddingHorizontal: 16, paddingVertical: 10,
@@ -505,22 +478,27 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
   tabTextActive: { color: '#fff' },
 
-  // ── Scroll ──────────────────────────────────────────────────────────────
   scroll: { flex: 1 },
   scrollContent: { padding: 16 },
 
-  // ── Summary Strip ────────────────────────────────────────────────────────
   summaryStrip: {
     flexDirection: 'row', borderRadius: 16,
     paddingVertical: 14, paddingHorizontal: 20,
-    marginBottom: 14, overflow: 'hidden',
+    marginBottom: 8, overflow: 'hidden',
   },
   summaryItem: { flex: 1, alignItems: 'center' },
   summaryVal: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
   summaryLbl: { color: '#6ee7b7', fontSize: 10, fontWeight: '500', marginTop: 3 },
   summarySep: { width: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
 
-  // ── Category Pills ───────────────────────────────────────────────────────
+  disclaimerBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#ecfdf5', padding: 10,
+    borderRadius: 8, marginBottom: 14,
+    borderWidth: 1, borderColor: '#d1fae5'
+  },
+  disclaimerText: { flex: 1, fontSize: 11, color: '#047857', fontWeight: '500', lineHeight: 16 },
+
   pillRow: { paddingBottom: 12, gap: 8 },
   pill: {
     flexDirection: 'row', alignItems: 'center',
@@ -532,7 +510,6 @@ const styles = StyleSheet.create({
   pillText: { fontSize: 12, fontWeight: '600', color: '#64748b' },
   pillTextActive: { color: '#fff' },
 
-  // ── Results row ───────────────────────────────────────────────────────────
   resultsRow: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', marginBottom: 12,
@@ -546,7 +523,6 @@ const styles = StyleSheet.create({
   },
   sortText: { fontSize: 12, color: '#059669', fontWeight: '700' },
 
-  // ── Product Row ───────────────────────────────────────────────────────────
   prodRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff', borderRadius: 18,
@@ -579,7 +555,6 @@ const styles = StyleSheet.create({
   },
   trendText: { fontSize: 10, fontWeight: '700' },
 
-  // ── Property Grid ─────────────────────────────────────────────────────────
   propGrid: {
     flexDirection: 'row', flexWrap: 'wrap',
     justifyContent: 'space-between', gap: 12,
@@ -619,7 +594,6 @@ const styles = StyleSheet.create({
   },
   propAreaText: { fontSize: 10, color: '#64748b', fontWeight: '600' },
 
-  // ── Empty State ───────────────────────────────────────────────────────────
   emptyWrap: {
     alignItems: 'center', justifyContent: 'center',
     paddingVertical: 52, gap: 8,

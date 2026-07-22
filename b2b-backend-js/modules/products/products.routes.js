@@ -8,7 +8,6 @@ import {
   getAllProducts, 
   updateProduct, 
   deleteProduct,
-  comparePrices,
   purchaseProduct
 } from './products.controller.js';
 import { payForOrder } from './trade.controller.js';
@@ -35,7 +34,6 @@ router.use(protect);
 // UNIVERSAL ROUTES (Filters handled in controller)
 // ==========================================
 router.get('/', getAllProducts);
-router.get('/compare', comparePrices); // Must go before /:id
 
 // ==========================================
 // SUPPLY SIDE (Farmers & Wholesalers)

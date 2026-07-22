@@ -52,8 +52,8 @@ const MASTER_MENU: MenuSection[] = [
     title: 'LISTINGS',
     items: [
       { label: 'Suggestions',   route: 'MandiPulse',  icon: 'lightbulb-on-outline',   lib: 'mci' }, // Universal
-      { label: 'Add Product',   route: 'AddProduct',  icon: 'basket-plus-outline',    lib: 'mci', accent: true, roles: ['FARMER', 'WHOLESALER'] },
-      { label: 'List Property', route: 'AddProperty', icon: 'home-plus-outline',      lib: 'mci', accent: true, roles: ['WHOLESALER'] },
+      { label: 'Add Product',   route: 'AddProduct',  icon: 'basket-plus-outline',    lib: 'mci', accent: true, roles: ['FARMER', 'WHOLESALER','RETAILER'] },
+      { label: 'List Property', route: 'AddProperty', icon: 'home-plus-outline',      lib: 'mci', accent: true, roles: ['WHOLESALER','FARMER','RETAILER'] },
       { label: 'My Inventory',  route: 'Inventory',   icon: 'warehouse',              lib: 'mci', badge: 3,     roles: ['FARMER', 'WHOLESALER'] },
       { label: 'My KhataBook',  route: 'Khata',       icon: 'book-open-page-variant-outline', lib: 'mci',       roles: ['FARMER', 'WHOLESALER'] },
     ],

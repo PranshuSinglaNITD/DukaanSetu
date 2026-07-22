@@ -54,10 +54,55 @@ model User {
   averageRating     Float           @default(0.0)
   totalReviews      Int             @default(0)
 
+  buyerRooms     ChatRoom[]    @relation("BuyerRooms")
+  sellerRooms    ChatRoom[]    @relation("SellerRooms")
+  chatMessages   ChatMessage[]
+
   reviewsGiven      Review[]        @relation("ReviewsGiven")
   reviewsReceived   Review[]        @relation("ReviewsReceived")
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
+}
+
+enum MessageType {
+  TEXT
+  IMAGE     // For sharing photos of the inventory or transport
+  DOCUMENT  // For sharing quality certificates or invoices
+  SYSTEM    // For automated alerts (e.g., "Wholesaler sent a new offer")
+}
+
+model ChatRoom {
+  id          String        @id @default(uuid())
+  productId   String?       
+  product     Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  
+  buyerId     String
+  buyer       User          @relation("BuyerRooms", fields: [buyerId], references: [id])
+  
+  sellerId    String
+  seller      User          @relation("SellerRooms", fields: [sellerId], references: [id])
+  
+  messages    ChatMessage[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([buyerId, sellerId, productId]) 
+}
+
+model ChatMessage {
+  id          String      @id @default(uuid())
+  roomId      String
+  room        ChatRoom    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  
+  // Optional: System messages won't have a senderId
+  senderId    String?     
+  sender      User?       @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  
+  type        MessageType @default(TEXT)
+  text        String      // Holds standard text, a file URL, or a system notification
+  
+  isRead      Boolean     @default(false)
+  createdAt   DateTime    @default(now())
 }
 
 model Review {
@@ -120,6 +165,7 @@ model Product {
   isAvailable  Boolean       @default(true)
   negotiations Negotiation[]
   expiryDate   DateTime 
+  chatRooms      ChatRoom[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   shipment     Shipment[]

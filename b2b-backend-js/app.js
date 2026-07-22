@@ -27,6 +27,7 @@ import demandRoutes from './modules/demand/demands.routes.js'
 import { startDemandWorkers } from './cron/demand.worker.js';
 import reviewRoutes from './modules/review/review.routes.js';
 import documentRoutes from './modules/document/document.routes.js'
+import chatRoutes from './modules/chat/chat.routes.js'
 
 dotenv.config();
 
@@ -36,7 +37,8 @@ const PORT = process.env.PORT || 3000;
 const httpServer=createServer(app)
 
 const io = new Server(httpServer, {
-  cors: { origin: '*' }
+  cors: { origin: '*' },
+  methods: ["GET", "POST"]
 });
 
 io.on('connection', (socket) => {
@@ -113,6 +115,7 @@ app.use('/api/voice',voiceROutes);
 app.use('/api/demands',demandRoutes);
 app.use('/api/reviews',reviewRoutes);
 app.use('/api/docs',documentRoutes);
+app.use('/api/chat',chatRoutes);
   
 startDemandWorkers();
 console.log("⚙️ Background workers initialized.");
@@ -122,10 +125,6 @@ app.use((req, res, next) => {
   res.status(404).json({ error: "Route not found" });
 });
 
-// Base Health Route
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'success', message: 'B2B API is running!' });
-});
 app.use((req, res, next) => {
   console.log(`404 ERROR: Frontend tried to hit -> ${req.method} ${req.originalUrl}`);
   res.status(404).json({ error: "Route not found" });
@@ -138,6 +137,56 @@ app.listen(PORT, () => {
 app.use((req, res, next) => {
   console.log(`404 ERROR: Frontend tried to hit -> ${req.method} ${req.originalUrl}`);
   res.status(404).json({ error: "Route not found" });
+});
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization;
+  
+  if (!token) return next(new Error("Authentication failed: Token missing"));
+  
+  try {
+    const cleanToken = token.replace("Bearer ", "");
+    const decoded = jwt.verify(cleanToken, process.env.JWT_SECRET);
+    socket.user = decoded; 
+    next();
+  } catch (err) {
+    next(new Error("Authentication failed: Invalid or expired token"));
+  }
+});
+
+io.on('connection', (socket) => {
+  console.log(`🔌 User Connected: ${socket.user.userId}`);
+
+  // When a user opens a specific chat screen on their phone
+  socket.on('join_room', ({ roomId }) => {
+    socket.join(roomId);
+    console.log(`👤 User joined Room: ${roomId}`);
+  });
+
+  // When a user types a normal text message
+  socket.on('send_message', async ({ roomId, text }) => {
+    try {
+      // Save it to the DB so it is permanently stored
+      const newMessage = await prisma.chatMessage.create({
+        data: {
+          roomId,
+          senderId: socket.user.userId,
+          text,
+          type: 'TEXT'
+        },
+        include: { sender: { select: { name: true, role: true } } }
+      });
+
+      // Broadcast it instantly to the other person in the room
+      io.to(roomId).emit('receive_message', newMessage);
+    } catch (error) {
+      console.error("Socket Message Error:", error);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔌 User Disconnected: ${socket.user.userId}`);
+  });
 });
 
 httpServer.listen(PORT, '0.0.0.0', () => {

@@ -17,8 +17,7 @@ export default function KhataScreen() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 🚨 Update with your actual computer's IP address
-  const BACKEND_URL = 'http://192.168.1.2:3000/api/khata';
+  const BACKEND_URL = 'http://192.168.1.8:3000/api/khata';
 
   const loadKhata = async () => {
     setIsLoading(true);
